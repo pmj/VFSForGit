@@ -10,6 +10,7 @@
 #include "PrjFSProviderUserClient.hpp"
 #include "kernel-header-wrappers/mount.h"
 #include "VnodeUtilities.hpp"
+#include "PerformanceTracing.hpp"
 
 
 static RWLock s_rwLock = {};
@@ -58,12 +59,16 @@ kern_return_t VirtualizationRoots_Cleanup()
 
 VirtualizationRoot* VirtualizationRoots_FindForVnode(vnode_t vnode)
 {
+    ProfileSample functionSample(Probe_VirtualizationRoot_Find);
+
     VirtualizationRoot* root = nullptr;
     
     vnode_get(vnode);
     // Search up the tree until we hit a known virtualization root or THE root of the file system
     while (nullptr == root && NULLVP != vnode && !vnode_isvroot(vnode))
     {
+        ProfileSample functionSample(Probe_VirtualizationRoot_FindIteration);
+        
         int16_t rootIndex = VirtualizationRoots_LookupVnode(vnode, nullptr);
         if (rootIndex >= 0)
         {

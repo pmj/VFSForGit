@@ -17,6 +17,23 @@ static bool fetch_kext_profiling_data(io_connect_t connection);
 #define PCNAME(SUFFIX) [Probe_ ## SUFFIX] = #SUFFIX
 static const char* const PerfCounterNames[Probe_Count] =
 {
+    PCNAME(VnodeOp),
+    PCNAME(FileOp),
+    PCNAME(Op_EarlyOut),
+    PCNAME(Op_NoVirtualizationRootFlag),
+    PCNAME(Op_EmptyFlag),
+    PCNAME(Op_DenyCrawler),
+    PCNAME(Op_Offline),
+    PCNAME(Op_Provider),
+    PCNAME(VnodeOp_PopulatePlaceholderDirectory),
+    PCNAME(VnodeOp_HydratePlaceholderFile),
+    
+    PCNAME(Op_IdentifySplit),
+    PCNAME(Op_VirtualizationRootFindSplit),
+        
+    PCNAME(ReadFileFlags),
+    PCNAME(VirtualizationRoot_Find),
+    PCNAME(VirtualizationRoot_FindIteration),
 };
 
 int main(int argc, const char * argv[])

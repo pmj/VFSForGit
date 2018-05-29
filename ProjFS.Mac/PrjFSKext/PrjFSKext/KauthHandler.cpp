@@ -12,6 +12,7 @@
 #include "Message.h"
 #include "Locks.hpp"
 #include "PrjFSProviderUserClient.hpp"
+#include "PerformanceTracing.hpp"
 
 // Function prototypes
 static int HandleVnodeOperation(
@@ -61,6 +62,7 @@ static bool ShouldHandleVnodeOpEvent(
     vfs_context_t context,
     const vnode_t vnode,
     kauth_action_t action,
+    ProfileSample& operationSample,
 
     // Out params:
     VirtualizationRoot** root,
@@ -249,6 +251,8 @@ static int HandleVnodeOperation(
     uintptr_t       arg3)
 {
     atomic_fetch_add(&s_numActiveKauthEvents, 1);
+
+    ProfileSample functionSample(Probe_VnodeOp);
     
     vfs_context_t context = reinterpret_cast<vfs_context_t>(arg0);
     vnode_t currentVnode =  reinterpret_cast<vnode_t>(arg1);
@@ -278,6 +282,7 @@ static int HandleVnodeOperation(
             context,
             currentVnode,
             action,
+            functionSample,
             &root,
             &vnodeType,
             &currentVnodeFileFlags,
@@ -300,6 +305,8 @@ static int HandleVnodeOperation(
         {
             if (FileFlagsBitIsSet(currentVnodeFileFlags, FileFlags_IsEmpty))
             {
+                functionSample.setProbe(Probe_VnodeOp_PopulatePlaceholderDirectory);
+
                 if (!TrySendRequestAndWaitForResponse(
                         root,
                         MessageType_KtoU_EnumerateDirectory,
@@ -362,6 +369,8 @@ static int HandleVnodeOperation(
         {
             if (FileFlagsBitIsSet(currentVnodeFileFlags, FileFlags_IsEmpty))
             {
+                functionSample.setProbe(Probe_VnodeOp_HydratePlaceholderFile);
+
                 if (!TrySendRequestAndWaitForResponse(
                         root,
                         MessageType_KtoU_HydrateFile,
@@ -395,7 +404,9 @@ static int HandleFileOpOperation(
     uintptr_t       arg3)
 {
     atomic_fetch_add(&s_numActiveKauthEvents, 1);
-    
+
+    ProfileSample functionSample(Probe_FileOp);
+
     vfs_context_t context = vfs_context_create(NULL);
     vnode_t currentVnodeFromPath = NULLVP;
 
@@ -540,6 +551,7 @@ static bool ShouldHandleVnodeOpEvent(
     vfs_context_t context,
     const vnode_t vnode,
     kauth_action_t action,
+    ProfileSample& operationSample,
 
     // Out params:
     VirtualizationRoot** root,
@@ -554,6 +566,7 @@ static bool ShouldHandleVnodeOpEvent(
     
     if (!VirtualizationRoot_VnodeIsOnAllowedFilesystem(vnode))
     {
+        operationSample.setProbe(Probe_Op_EarlyOut);
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
     }
@@ -561,16 +574,22 @@ static bool ShouldHandleVnodeOpEvent(
     *vnodeType = vnode_vtype(vnode);
     if (ShouldIgnoreVnodeType(*vnodeType, vnode))
     {
+        operationSample.setProbe(Probe_Op_EarlyOut);
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
     }
     
-    *vnodeFileFlags = ReadVNodeFileFlags(vnode, context);
+    {
+        ProfileSample readflags(Probe_ReadFileFlags);
+        *vnodeFileFlags = ReadVNodeFileFlags(vnode, context);
+    }
+
     if (!FileFlagsBitIsSet(*vnodeFileFlags, FileFlags_IsInVirtualizationRoot))
     {
         // This vnode is not part of ANY virtualization root, so exit now before doing any more work.
         // This gives us a cheap way to avoid adding overhead to IO outside of a virtualization root.
         
+        operationSample.setProbe(Probe_Op_NoVirtualizationRootFlag);
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
     }
@@ -582,7 +601,7 @@ static bool ShouldHandleVnodeOpEvent(
     {
         // This vnode is not yet hydrated, so do not allow a file system crawler to force hydration.
         // Once a vnode is hydrated, it's fine to allow crawlers to access those contents.
-        
+
         if (IsFileSystemCrawler(procname))
         {
             // We must DENY file system crawlers rather than DEFER.
@@ -590,12 +609,19 @@ static bool ShouldHandleVnodeOpEvent(
             // get called again, so we lose the opportunity to hydrate the file/directory and it will appear as though
             // it is missing its contents.
             
+            operationSample.setProbe(Probe_Op_DenyCrawler);
             *kauthResult = KAUTH_RESULT_DENY;
             return false;
         }
+
+        operationSample.setProbe(Probe_Op_EmptyFlag);
     }
     
+    operationSample.takeSplitSample(Probe_Op_IdentifySplit);
+
     *root = VirtualizationRoots_FindForVnode(vnode);
+    
+    operationSample.takeSplitSample(Probe_Op_VirtualizationRootFindSplit);
     
     if (nullptr == *root)
     {
@@ -618,6 +644,7 @@ static bool ShouldHandleVnodeOpEvent(
     // If the calling process is the provider, we must exit right away to avoid deadlocks
     if (*pid == (*root)->providerPid)
     {
+        operationSample.setProbe(Probe_Op_Provider);
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
     }
