@@ -33,4 +33,12 @@ enum PrjFSServiceUserClientType
     UserClientType_Log,
 };
 
+enum PrjFS_PerfCounter : int32_t
+{
+    Probe_Count,
+    
+    Probe_None = -1
+};
+typedef struct PerfTracingProbe PerfTracingProbe;
+
 #endif /* PrjFSCommon_h */
