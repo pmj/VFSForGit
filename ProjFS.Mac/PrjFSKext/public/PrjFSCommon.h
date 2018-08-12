@@ -1,6 +1,7 @@
 #ifndef PrjFSCommon_h
 #define PrjFSCommon_h
 
+#include "../Lib/kextgizmos/profiling.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -58,6 +59,6 @@ enum PrjFS_PerfCounter : int32_t
     
     Probe_None = -1
 };
-typedef struct PerfTracingProbe PerfTracingProbe;
+typedef dj_profile_probe PerfTracingProbe;
 
 #endif /* PrjFSCommon_h */

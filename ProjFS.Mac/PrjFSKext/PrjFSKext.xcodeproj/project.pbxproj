@@ -16,6 +16,8 @@
 		4AC1D7C52091FBFC00786861 /* PrjFSLogUserClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4AC1D7C32091FBFC00786861 /* PrjFSLogUserClient.cpp */; };
 		4AC1D7C62091FBFC00786861 /* PrjFSLogUserClient.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 4AC1D7C42091FBFC00786861 /* PrjFSLogUserClient.hpp */; };
 		4AE187A821203A890026AC68 /* PerformanceTracing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4AE187A721203A890026AC68 /* PerformanceTracing.cpp */; };
+		4AE187AD21205F060026AC68 /* profiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4AE187AB21205F060026AC68 /* profiling.cpp */; };
+		4AE187AE21205F060026AC68 /* profiling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4AE187AC21205F060026AC68 /* profiling.h */; };
 		C6BDD366208BC60400CB7E58 /* VirtualizationRoots.hpp in Headers */ = {isa = PBXBuildFile; fileRef = C6BDD364208BC60400CB7E58 /* VirtualizationRoots.hpp */; };
 		C6BDD367208BC60400CB7E58 /* VirtualizationRoots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C6BDD365208BC60400CB7E58 /* VirtualizationRoots.cpp */; };
 		C6BDD36A208BC99100CB7E58 /* Locks.hpp in Headers */ = {isa = PBXBuildFile; fileRef = C6BDD368208BC99100CB7E58 /* Locks.hpp */; };
@@ -47,6 +49,8 @@
 		4AC1D7C32091FBFC00786861 /* PrjFSLogUserClient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PrjFSLogUserClient.cpp; sourceTree = "<group>"; };
 		4AC1D7C42091FBFC00786861 /* PrjFSLogUserClient.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = PrjFSLogUserClient.hpp; sourceTree = "<group>"; };
 		4AE187A721203A890026AC68 /* PerformanceTracing.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PerformanceTracing.cpp; sourceTree = "<group>"; };
+		4AE187AB21205F060026AC68 /* profiling.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = profiling.cpp; sourceTree = "<group>"; };
+		4AE187AC21205F060026AC68 /* profiling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = profiling.h; sourceTree = "<group>"; };
 		C6BDD364208BC60400CB7E58 /* VirtualizationRoots.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = VirtualizationRoots.hpp; sourceTree = "<group>"; };
 		C6BDD365208BC60400CB7E58 /* VirtualizationRoots.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VirtualizationRoots.cpp; sourceTree = "<group>"; };
 		C6BDD368208BC99100CB7E58 /* Locks.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = Locks.hpp; sourceTree = "<group>"; };
@@ -85,6 +89,23 @@
 			path = "kernel-header-wrappers";
 			sourceTree = "<group>";
 		};
+		4AE187A921205F060026AC68 /* Lib */ = {
+			isa = PBXGroup;
+			children = (
+				4AE187AA21205F060026AC68 /* kextgizmos */,
+			);
+			path = Lib;
+			sourceTree = "<group>";
+		};
+		4AE187AA21205F060026AC68 /* kextgizmos */ = {
+			isa = PBXGroup;
+			children = (
+				4AE187AB21205F060026AC68 /* profiling.cpp */,
+				4AE187AC21205F060026AC68 /* profiling.h */,
+			);
+			path = kextgizmos;
+			sourceTree = "<group>";
+		};
 		C6BDD37B208C445C00CB7E58 /* public */ = {
 			isa = PBXGroup;
 			children = (
@@ -100,6 +121,7 @@
 		C6C780A6207FC67200E7E054 = {
 			isa = PBXGroup;
 			children = (
+				4AE187A921205F060026AC68 /* Lib */,
 				C6BDD37B208C445C00CB7E58 /* public */,
 				C6C780B2207FC67200E7E054 /* PrjFSKext */,
 				C6C780B1207FC67200E7E054 /* Products */,
@@ -161,6 +183,7 @@
 				C6C780CD207FD02400E7E054 /* KextLog.hpp in Headers */,
 				C6BDD373208C033200CB7E58 /* Memory.hpp in Headers */,
 				C6E9E118208BBB62004A5725 /* KauthHandler.hpp in Headers */,
+				4AE187AE21205F060026AC68 /* profiling.h in Headers */,
 				4A9D139E208F675500376182 /* PrjFSService.hpp in Headers */,
 				4AC1D7C62091FBFC00786861 /* PrjFSLogUserClient.hpp in Headers */,
 				4AC1D7C12091FA0400786861 /* PrjFSProviderUserClient.hpp in Headers */,
@@ -267,6 +290,7 @@
 				C6C780B4207FC67200E7E054 /* PrjFSKext.cpp in Sources */,
 				C6BDD37D208C5E5600CB7E58 /* Message_Kernel.cpp in Sources */,
 				4AC1D7C02091FA0400786861 /* PrjFSProviderUserClient.cpp in Sources */,
+				4AE187AD21205F060026AC68 /* profiling.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -380,6 +404,10 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"PRJFS_PERFORMANCE_TRACING_ENABLE=1",
+					"DJ_PROFILE_ENABLE=1",
+				);
 				GCC_TREAT_IMPLICIT_FUNCTION_DECLARATIONS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = NO;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

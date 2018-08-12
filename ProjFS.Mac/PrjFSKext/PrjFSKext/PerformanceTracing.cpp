@@ -18,3 +18,8 @@ IOReturn PerfTracing_ExportDataUserClient(IOExternalMethodArguments* arguments)
 {
     return kIOReturnUnsupported;
 }
+
+void PerfTracing_ProbeInit(PerfTracingProbe* probe)
+{
+    *probe = DJ_PROFILE_PROBE_INIT;
+}

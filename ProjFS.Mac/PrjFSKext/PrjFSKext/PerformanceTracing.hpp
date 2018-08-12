@@ -88,6 +88,11 @@ void ProfileSample::setProbe(PrjFS_PerfCounter probe)
     this->wholeSampleProbe = probe;
 }
 
+inline void PerfTracing_RecordSample(PerfTracingProbe* probe, uint64_t startTime, uint64_t endTime)
+{
+    dj_profile_sample(probe, startTime, endTime);
+}
+
 #else
 
 // With tracing disabled, try to compile down to nothing:
