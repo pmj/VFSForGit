@@ -63,15 +63,25 @@ static bool ShouldHandleVnodeOpEvent(
     PerfTracer* perfTracer,
     vfs_context_t _Nonnull context,
     const vnode_t vnode,
-    kauth_action_t action,
 
     // Out params:
-    VirtualizationRootHandle* root,
     vtype* vnodeType,
     uint32_t* vnodeFileFlags,
-    FsidInode* vnodeFsidInode,
     int* pid,
     char procname[MAXCOMLEN + 1],
+    int* kauthResult,
+    int* kauthError);
+
+static bool TryGetVirtualizationRoot(
+    // In params:
+    PerfTracer* perfTracer,
+    vfs_context_t _Nonnull context,
+    const vnode_t vnode,
+    int pid,
+    
+    // Out params:
+    VirtualizationRootHandle* root,
+    FsidInode* vnodeFsidInode,
     int* kauthResult,
     int* kauthError);
 
@@ -303,11 +313,8 @@ static int HandleVnodeOperation(
             &perfTracer,
             context,
             currentVnode,
-            action,
-            &root,
             &vnodeType,
             &currentVnodeFileFlags,
-            &vnodeFsidInode,
             &pid,
             procname,
             &kauthResult,
@@ -321,6 +328,11 @@ static int HandleVnodeOperation(
     
     if (isDeleteAction)
     {
+        if (!TryGetVirtualizationRoot(&perfTracer, context, currentVnode, pid, &root, &vnodeFsidInode, &kauthResult, kauthError))
+        {
+            goto CleanupAndReturn;
+        }
+        
         PerfSample preDeleteSample(&perfTracer, PrjFSPerfCounter_VnodeOp_PreDelete);
         
         if (!TrySendRequestAndWaitForResponse(
@@ -354,8 +366,13 @@ static int HandleVnodeOperation(
             // Recursively expand directory on delete to ensure child placeholders are created before rename operations
             if (isDeleteAction)
             {
-                PerfSample recursivelyEnumerateSample(&perfTracer, PrjFSPerfCounter_VnodeOp_RecursivelyEnumerateDirectory);
+                if (!TryGetVirtualizationRoot(&perfTracer, context, currentVnode, pid, &root, &vnodeFsidInode, &kauthResult, kauthError))
+                {
+                    goto CleanupAndReturn;
+                }
 
+                PerfSample recursivelyEnumerateSample(&perfTracer, PrjFSPerfCounter_VnodeOp_RecursivelyEnumerateDirectory);
+        
                 if (!TrySendRequestAndWaitForResponse(
                         root,
                         MessageType_KtoU_RecursivelyEnumerateDirectory,
@@ -372,8 +389,13 @@ static int HandleVnodeOperation(
             }
             else if (FileFlagsBitIsSet(currentVnodeFileFlags, FileFlags_IsEmpty))
             {
-                PerfSample enumerateDirectorySample(&perfTracer, PrjFSPerfCounter_VnodeOp_EnumerateDirectory);
+                if (!TryGetVirtualizationRoot(&perfTracer, context, currentVnode, pid, &root, &vnodeFsidInode, &kauthResult, kauthError))
+                {
+                    goto CleanupAndReturn;
+                }
 
+                PerfSample enumerateDirectorySample(&perfTracer, PrjFSPerfCounter_VnodeOp_EnumerateDirectory);
+        
                 if (!TrySendRequestAndWaitForResponse(
                         root,
                         MessageType_KtoU_EnumerateDirectory,
@@ -405,6 +427,11 @@ static int HandleVnodeOperation(
         {
             if (FileFlagsBitIsSet(currentVnodeFileFlags, FileFlags_IsEmpty))
             {
+                if (!TryGetVirtualizationRoot(&perfTracer, context, currentVnode, pid, &root, &vnodeFsidInode, &kauthResult, kauthError))
+                {
+                    goto CleanupAndReturn;
+                }
+
                 PerfSample enumerateDirectorySample(&perfTracer, PrjFSPerfCounter_VnodeOp_HydrateFile);
 
                 if (!TrySendRequestAndWaitForResponse(
@@ -606,13 +633,10 @@ static bool ShouldHandleVnodeOpEvent(
     PerfTracer* perfTracer,
     vfs_context_t _Nonnull context,
     const vnode_t vnode,
-    kauth_action_t action,
 
     // Out params:
-    VirtualizationRootHandle* root,
     vtype* vnodeType,
     uint32_t* vnodeFileFlags,
-    FsidInode* vnodeFsidInode,
     int* pid,
     char procname[MAXCOMLEN + 1],
     int* kauthResult,
@@ -621,7 +645,6 @@ static bool ShouldHandleVnodeOpEvent(
     PerfSample handleVnodeSample(perfTracer, PrjFSPerfCounter_ShouldHandleVnodeOp);
 
     *kauthResult = KAUTH_RESULT_DEFER;
-    *root = RootHandle_None;
     
     {
         PerfSample isAllowedSample(perfTracer, PrjFSPerfCounter_ShouldHandleVnodeOp_IsAllowedFileSystem);
@@ -688,17 +711,31 @@ static bool ShouldHandleVnodeOpEvent(
             return false;
         }
     }
+    
+    return true;
+}
 
-    {
-        PerfSample findRootSample(perfTracer, PrjFSPerfCounter_ShouldHandleVnodeOp_FindVirtualizationRoot);
+static bool TryGetVirtualizationRoot(
+    // In params:
+    PerfTracer* perfTracer,
+    vfs_context_t _Nonnull context,
+    const vnode_t vnode,
+    int pid,
+    
+    // Out params:
+    VirtualizationRootHandle* root,
+    FsidInode* vnodeFsidInode,
+    int* kauthResult,
+    int* kauthError)
+{
+    PerfSample findRootSample(perfTracer, PrjFSPerfCounter_TryGetVirtualizationRoot);
         
-        *vnodeFsidInode = Vnode_GetFsidAndInode(vnode, context);
-        *root = VirtualizationRoot_FindForVnode(vnode, *vnodeFsidInode);
-    }
+    *vnodeFsidInode = Vnode_GetFsidAndInode(vnode, context);
+    *root = VirtualizationRoot_FindForVnode(vnode, *vnodeFsidInode);
 
     if (RootHandle_ProviderTemporaryDirectory == *root)
     {
-        perfTracer->IncrementCount(PrjFSPerfCounter_ShouldHandleVnodeOp_TemporaryDirectory);
+        perfTracer->IncrementCount(PrjFSPerfCounter_TryGetVirtualizationRoot_TemporaryDirectory);
     
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
@@ -706,7 +743,7 @@ static bool ShouldHandleVnodeOpEvent(
     else if (RootHandle_None == *root)
     {
         KextLog_FileNote(vnode, "No virtualization root found for file with set flag.");
-        perfTracer->IncrementCount(PrjFSPerfCounter_ShouldHandleVnodeOp_NoRootFound);
+        perfTracer->IncrementCount(PrjFSPerfCounter_TryGetVirtualizationRoot_NoRootFound);
     
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
@@ -716,22 +753,21 @@ static bool ShouldHandleVnodeOpEvent(
         // TODO(Mac): Protect files in the worktree from modification (and prevent
         // the creation of new files) when the provider is offline
         
-        perfTracer->IncrementCount(PrjFSPerfCounter_ShouldHandleVnodeOp_ProviderOffline);
+        perfTracer->IncrementCount(PrjFSPerfCounter_TryGetVirtualizationRoot_ProviderOffline);
         
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
     }
     
     // If the calling process is the provider, we must exit right away to avoid deadlocks
-    if (VirtualizationRoot_PIDMatchesProvider(*root, *pid))
+    if (VirtualizationRoot_PIDMatchesProvider(*root, pid))
     {
-        perfTracer->IncrementCount(PrjFSPerfCounter_ShouldHandleVnodeOp_OriginatedByProvider);
+        perfTracer->IncrementCount(PrjFSPerfCounter_TryGetVirtualizationRoot_OriginatedByProvider);
         
         *kauthResult = KAUTH_RESULT_DEFER;
         return false;
     }
     
-    perfTracer->IncrementCount(PrjFSPerfCounter_ShouldHandleVnodeOp_IsHandledEvent);
     return true;
 }
 
