@@ -57,6 +57,9 @@ struct PrjFSPerfCounterResult
     _Atomic uint64_t max;
     // Sum-of-squares of measured time intervals (for stddev)
     _Atomic __uint128_t sumSquares;
+    
+    // log-scale histogram buckets
+    _Atomic uint64_t sampleBuckets[64];
 };
 
 #endif /* PrjFSPerfCounter_h */
