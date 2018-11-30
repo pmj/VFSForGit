@@ -577,10 +577,12 @@ errno_t VirtualizationRoot_RefreshRootPath(VirtualizationRootHandle rootIndex)
         }
         else if (0 == strncmp(newRootPath, root.path, sizeof(newRootPath)))
         {
+            KextLog_Info("VirtualizationRoot_RefreshRootPath: root %d path '%s' has not changed", rootIndex, root.path);
             error = -1;
         }
         else
         {
+            KextLog_Info("VirtualizationRoot_RefreshRootPath: root %d path changing from '%s' to '%s'", rootIndex, root.path, newRootPath);
             strlcpy(root.path, newRootPath, sizeof(root.path));
             root.providerUserClient->setProperty(PrjFSProviderPathKey, newRootPath);
             error = 0;

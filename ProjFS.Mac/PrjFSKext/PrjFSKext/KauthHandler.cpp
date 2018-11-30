@@ -928,12 +928,14 @@ static bool TrySendRequestAndWaitForResponse(
         errno_t error = VirtualizationRoot_RefreshRootPath(root);
         if (error == EPIPE)
         {
+            KextLog_Info("TrySendRequestAndWaitForResponse: VirtualizationRoot_RefreshRootPath on root %d returned EPIPE, provider has disconnected. (vnodePath = '%s')", root, vnodePath);
             // Provider has since disconnected, sending message would fail anyway.
             *kauthResult = KAUTH_RESULT_DEFER;
             return false;
         }
         else if (error > 0)
         {
+            KextLog_Error("TrySendRequestAndWaitForResponse: VirtualizationRoot_RefreshRootPath on root %d failed with error %d", root, error);
             return false;
         }
         else
@@ -943,6 +945,7 @@ static bool TrySendRequestAndWaitForResponse(
                 relativePath = VirtualizationRoot_GetRootRelativePath(root, vnodePath);
                 if (nullptr != relativePath)
                 {
+                    KextLog_Info("TrySendRequestAndWaitForResponse: VirtualizationRoot_RefreshRootPath updated the path for root %d, relative path calculation for '%s' succeeded: '%s'", root, vnodePath, relativePath);
                     break;
                 }
             }
@@ -965,6 +968,7 @@ static bool TrySendRequestAndWaitForResponse(
                 {
                     vnodePath = vnodePathBuffer;
                     relativePath = VirtualizationRoot_GetRootRelativePath(root, vnodePath);
+                    KextLog_Info("TrySendRequestAndWaitForResponse: VirtualizationRoot_RefreshRootPath returned %d for root %d, relative path calculation for '%s' after updating path is now: '%s'", error, root, vnodePath, relativePath);
                 }
             }
             else
