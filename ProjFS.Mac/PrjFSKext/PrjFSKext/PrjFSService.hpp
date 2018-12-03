@@ -15,4 +15,8 @@ public:
     virtual IOReturn newUserClient(
         task_t owningTask, void* securityID, UInt32 type,
         OSDictionary* properties, IOUserClient** handler ) override;
+    
+    static void initialize();
+    static void cleanup();
+    static void setPIDPermissions(pid_t pid, bool permitted);
 };

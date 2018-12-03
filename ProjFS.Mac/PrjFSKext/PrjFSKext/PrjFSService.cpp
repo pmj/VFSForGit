@@ -5,6 +5,7 @@
 #include "PrjFSLogUserClient.hpp"
 #include "KextLog.hpp"
 #include "VirtualizationRoots.hpp"
+#include "AssociativeArray.hpp"
 
 #include <IOKit/IOLib.h>
 #include <libkern/OSAtomic.h>
@@ -15,6 +16,19 @@ OSDefineMetaClassAndStructors(PrjFSService, IOService);
 
 // We really only want one instance of this class
 static PrjFSService* service_singleton = nullptr;
+
+static RWLock s_permittedProcessesLock = {};
+
+struct PermittedProcess
+{
+    pid_t pid;
+};
+static bool PermittedProcess_Equals(const pid_t& pid, const PermittedProcess& process)
+{
+    return process.pid == pid;
+}
+
+static AssociativeArray<pid_t, PermittedProcess, PermittedProcess_Equals> s_permittedProcesses;
 
 bool PrjFSService::start(IOService* provider)
 {
@@ -109,6 +123,25 @@ IOReturn PrjFSService::newUserClient(
         break;
     case UserClientType_Log:
         {
+            if (current_task() != owningTask)
+            {
+                return kIOReturnNotPermitted;
+            }
+            
+            pid_t pid = proc_selfpid();
+            bool permitted;
+            RWLock_AcquireShared(s_permittedProcessesLock);
+            {
+                PermittedProcess* process = s_permittedProcesses.Find(pid);
+                permitted = (process != nullptr);
+            }
+            RWLock_ReleaseShared(s_permittedProcessesLock);
+            
+            if (!permitted)
+            {
+                return kIOReturnNotPermitted;
+            }
+            
             PrjFSLogUserClient* log_client = new PrjFSLogUserClient();
             if (InitAttachAndStartUserClient(this, log_client, owningTask, securityID, type, properties))
             {
@@ -128,4 +161,53 @@ IOReturn PrjFSService::newUserClient(
     }
 
     return result;
+}
+
+void PrjFSService::initialize()
+{
+    s_permittedProcessesLock = RWLock_Alloc();
+}
+
+void PrjFSService::cleanup()
+{
+    s_permittedProcesses.ClearAndFreeMemory();
+    
+    if (RWLock_IsValid(s_permittedProcessesLock))
+    {
+        RWLock_FreeMemory(&s_permittedProcessesLock);
+    }
+}
+
+void PrjFSService::setPIDPermissions(pid_t pid, bool permitted)
+{
+    bool mustUpdateStatus;
+    RWLock_AcquireShared(s_permittedProcessesLock);
+    {
+        PermittedProcess* process = s_permittedProcesses.Find(pid);
+        mustUpdateStatus = ((process != nullptr) != permitted);
+    }
+    RWLock_ReleaseShared(s_permittedProcessesLock);
+    
+    if (!mustUpdateStatus)
+    {
+        return;
+    }
+    
+    RWLock_AcquireExclusive(s_permittedProcessesLock);
+    {
+        if (permitted)
+        {
+            s_permittedProcesses.FindOrInsertLockedAllowResize(pid, PermittedProcess{ pid }, s_permittedProcessesLock);
+        }
+        else
+        {
+            PermittedProcess* process = s_permittedProcesses.Find(pid);
+            if (process != nullptr)
+            {
+                s_permittedProcesses.Remove(process);
+            }
+        }
+    }
+    RWLock_ReleaseExclusive(s_permittedProcessesLock);
+
 }

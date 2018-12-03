@@ -4,6 +4,7 @@
 #include <libkern/OSAtomic.h>
 #include <kern/assert.h>
 #include <stdatomic.h>
+#include <kern/cs_blobs.h>
 
 #include "PrjFSCommon.h"
 #include "PrjFSPerfCounter.h"
@@ -13,8 +14,41 @@
 #include "KextLog.hpp"
 #include "Message.h"
 #include "Locks.hpp"
+#include "PrjFSService.hpp"
 #include "PrjFSProviderUserClient.hpp"
 #include "PerformanceTracing.hpp"
+
+struct cs_blob;
+extern "C" cs_blob* ubc_cs_blob_get(vnode_t, cpu_type_t, off_t);
+
+// macOS 10.13.6
+struct cs_blob {
+    struct cs_blob    *csb_next;
+    cpu_type_t    csb_cpu_type;
+    unsigned int    csb_flags;
+    off_t        csb_base_offset;    /* Offset of Mach-O binary in fat binary */
+    off_t        csb_start_offset;    /* Blob coverage area start, from csb_base_offset */
+    off_t        csb_end_offset;        /* Blob coverage area end, from csb_base_offset */
+    vm_size_t    csb_mem_size;
+    vm_offset_t    csb_mem_offset;
+    vm_address_t    csb_mem_kaddr;
+    unsigned char    csb_cdhash[CS_CDHASH_LEN];
+    const struct cs_hash  *csb_hashtype;
+    vm_size_t    csb_hash_pagesize;    /* each hash entry represent this many bytes in the file */
+    vm_size_t    csb_hash_pagemask;
+    vm_size_t    csb_hash_pageshift;
+    vm_size_t    csb_hash_firstlevel_pagesize;    /* First hash this many bytes, then hash the hashes together */
+    const CS_CodeDirectory *csb_cd;
+    const char     *csb_teamid;
+    const CS_GenericBlob *csb_entitlements_blob;    /* raw blob, subrange of csb_mem_kaddr */
+    void *          csb_entitlements;    /* The entitlements as an OSDictionary */
+    unsigned int    csb_signer_type;
+
+    /* The following two will be replaced by the csb_signer_type. */
+    unsigned int    csb_platform_binary:1;
+    unsigned int    csb_platform_path:1;
+};
+
 
 // Function prototypes
 static int HandleVnodeOperation(
@@ -666,7 +700,40 @@ static int HandleFileOpOperation(
             }
         }
     }
-    
+    else if (KAUTH_FILEOP_EXEC == action)
+    {
+        currentVnode = reinterpret_cast<vnode_t>(arg0);
+        off_t offset = 0;
+        cs_blob* blob = ubc_cs_blob_get(currentVnode, CPU_TYPE_X86_64, offset);
+        // TODO(Mac): Version-gate acces to the struct as its layout may change
+        pid_t pid = proc_selfpid();
+        KextLog_FileInfo(currentVnode, "KAUTH_FILEOP_EXEC (PID %d): codesign blob %p", pid, blob);
+        
+        bool signatureCheckPassed = false;
+        
+        // Check if process is running an executable signed using a certificate with one of the Team IDs from the list
+        if (blob != nullptr)
+        {
+            KextLog_Info("csb_flags = 0x%x, csb_teamid = '%s', csb_signer_type = %u", blob->csb_flags, blob->csb_teamid ?: "[NULL]", blob->csb_signer_type);
+            
+            // Uncomment CS_DEV_CODE here to disallow processes only signed with "Mac Developer" certs
+            static const unsigned forbiddenFlags = CS_ADHOC; // | CS_DEV_CODE;
+            static const unsigned requiredFlags = CS_VALID | CS_SIGNED;
+            
+            if ((blob->csb_flags & requiredFlags) == requiredFlags && ((blob->csb_flags & forbiddenFlags) == 0))
+            {
+                if (nullptr != blob->csb_teamid
+                    && (0 == strcmp("UBF8T346G9", blob->csb_teamid)
+                        || 0 == strcmp("PLT8TQHCAJ", blob->csb_teamid)))
+                {
+                    signatureCheckPassed = true;
+                }
+            }
+        }
+        
+        PrjFSService::setPIDPermissions(pid, signatureCheckPassed);
+    }
+
 CleanupAndReturn:    
     if (NULLVP != currentVnodeFromPath)
     {
