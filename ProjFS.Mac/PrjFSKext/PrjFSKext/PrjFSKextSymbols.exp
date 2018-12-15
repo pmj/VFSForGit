@@ -1,0 +1,18 @@
+# Symbols that should be exported (public) by the linker. * is wildcard.
+
+# Required for registering and loading the kext
+_kmod_info
+_PrjFSKext_Start
+_PrjFSKext_Stop
+
+# PrjFS Service class & metaclass
+__ZN13io_gvfs_PrjFS*
+__ZNK13io_gvfs_PrjFS*
+
+# Log user client class & metaclass
+__ZN26io_gvfs_PrjFSLogUserClient*
+__ZNK26io_gvfs_PrjFSLogUserClient*
+
+# Provider user client class & metaclass
+__ZN31io_gvfs_PrjFSProviderUserClient*
+__ZNK31io_gvfs_PrjFSProviderUserClient*
