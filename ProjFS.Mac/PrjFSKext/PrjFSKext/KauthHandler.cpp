@@ -303,6 +303,38 @@ static void UseMainForkIfNamedStream(
     }
 }
 
+class VnodeNameRef
+{
+private:
+    VnodeNameRef(const VnodeNameRef&) = delete;
+    VnodeNameRef& operator=(const VnodeNameRef&) = delete;
+    
+    const char* vnodeNamePointer;
+public:
+    explicit VnodeNameRef(const char* vnodeName) :
+        vnodeNamePointer(vnodeName)
+    {
+    }
+    
+    VnodeNameRef() :
+        vnodeNamePointer(nullptr)
+    {};
+    
+    ~VnodeNameRef()
+    {
+        if (this->vnodeNamePointer != nullptr)
+        {
+            vnode_putname(this->vnodeNamePointer);
+            this->vnodeNamePointer = nullptr;
+        }
+    }
+    
+    const char* get() const
+    {
+        return this->vnodeNamePointer;
+    }
+};
+
 // Private functions
 static int HandleVnodeOperation(
     kauth_cred_t    credential,
@@ -353,15 +385,11 @@ static int HandleVnodeOperation(
         }
         else
         {
-            const char* name = vnode_getname(currentVnode);
+            VnodeNameRef name(vnode_getname(currentVnode));
             mount_t mount = vnode_mount(currentVnode);
             vfsstatfs* vfsStat = mount != nullptr ? vfs_statfs(mount) : nullptr;
 
-            KextLog_Error("HandleVnodeOperation: vn_getpath failed for vnode %p, error = %d, name '%s', recycled: %s, on mount point mounted at '%s'", currentVnode, error, name ?: "[NULL]", vnode_isrecycled(currentVnode) ? "yes" : "no", vfsStat ? vfsStat->f_mntonname : "[NULL]");
-            if (name != nullptr)
-            {
-                vnode_putname(name);
-            }
+            KextLog_Error("HandleVnodeOperation: vn_getpath failed for vnode %p, error = %d, name '%s', recycled: %s, mount %p mounted at '%s'", currentVnode, error, name.get() ?: "[NULL]", vnode_isrecycled(currentVnode) ? "yes" : "no", mount, vfsStat ? vfsStat->f_mntonname : "[NULL]");
         }
     }
 
@@ -639,11 +667,9 @@ static int HandleFileOpOperation(
         bool fileFlaggedInRoot;
         if (!TryGetFileIsFlaggedAsInRoot(currentVnode, context, &fileFlaggedInRoot))
         {
-            const char* vnode_name = vnode_getname(currentVnode);
+            VnodeNameRef vnodeName(vnode_getname(currentVnode));
             KextLog_Error("KAUTH_FILEOP_CLOSE: checking file flags failed. Path = '%s' Vnode name: %s, type %d, being recycled: %s",
-                path, vnode_name ?: "[NULL]", vnode_vtype(currentVnode), vnode_isrecycled(currentVnode) ? "yes" : "no");
-            if (vnode_name)
-                vnode_putname(vnode_name);
+                path, vnodeName.get() ?: "[NULL]", vnode_vtype(currentVnode), vnode_isrecycled(currentVnode) ? "yes" : "no");
             
             goto CleanupAndReturn;
         }
