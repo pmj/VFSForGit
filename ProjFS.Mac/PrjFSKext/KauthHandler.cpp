@@ -59,7 +59,10 @@ static bool TrySendRequestAndWaitForResponse(
     int pid,
     const char* procname,
     int* kauthResult,
-    int* kauthError);
+    int* kauthError,
+    void* resultDataBuffer = nullptr,
+    size_t resultDataBufferSize = 0,
+    size_t* resultDataSize = nullptr);
 static void AbortAllOutstandingEvents();
 static bool ShouldIgnoreVnodeType(vtype vnodeType, vnode_t vnode);
 
@@ -113,6 +116,9 @@ struct OutstandingMessage
     
     LIST_ENTRY(OutstandingMessage) _list_privates;
     
+    void*                          resultDataBuffer;
+    size_t                         resultDataBufferSize;
+    size_t                         resultDataSize; // actual size of data sent by provider
 };
 
 // State
@@ -214,7 +220,7 @@ kern_return_t KauthHandler_Cleanup()
     return result;
 }
 
-void KauthHandler_HandleKernelMessageResponse(VirtualizationRootHandle providerVirtualizationRootHandle, uint64_t messageId, MessageType responseType)
+void KauthHandler_HandleKernelMessageResponse(VirtualizationRootHandle providerVirtualizationRootHandle, uint64_t messageId, MessageType responseType, const void* resultData, size_t resultDataSize)
 {
     switch (responseType)
     {
@@ -226,11 +232,14 @@ void KauthHandler_HandleKernelMessageResponse(VirtualizationRootHandle providerV
                 OutstandingMessage* outstandingMessage;
                 LIST_FOREACH(outstandingMessage, &s_outstandingMessages, _list_privates)
                 {
-                    if (outstandingMessage->request.messageId == messageId && outstandingMessage->rootHandle == providerVirtualizationRootHandle)
+                    if (outstandingMessage->request.messageId == messageId && (outstandingMessage->rootHandle == providerVirtualizationRootHandle || outstandingMessage->rootHandle == RootHandle_AnyActiveProvider))
                     {
                         // Save the response for the blocked thread.
                         outstandingMessage->result = responseType;
                         outstandingMessage->receivedResult = true;
+                        
+                        memcpy(outstandingMessage->resultDataBuffer, resultData, MIN(resultDataSize, outstandingMessage->resultDataBufferSize));
+                        outstandingMessage->resultDataSize = resultDataSize;
                         
                         wakeup(outstandingMessage);
                         
@@ -958,7 +967,10 @@ static bool TrySendRequestAndWaitForResponse(
     int pid,
     const char* procname,
     int* kauthResult,
-    int* kauthError)
+    int* kauthError,
+    void* resultDataBuffer,
+    size_t resultDataBufferSize,
+    size_t* resultDataSize)
 {
     bool result = false;
     
@@ -966,6 +978,8 @@ static bool TrySendRequestAndWaitForResponse(
     {
         .receivedResult = false,
         .rootHandle = root,
+        .resultDataBuffer = resultDataBuffer,
+        .resultDataBufferSize = resultDataBufferSize,
     };
     
     if (nullptr == vnodePath)
@@ -1027,6 +1041,10 @@ static bool TrySendRequestAndWaitForResponse(
             {
                 *kauthResult = KAUTH_RESULT_DEFER;
                 result = true;
+                if (resultDataSize != nullptr)
+                {
+                    *resultDataSize = message.resultDataSize;
+                }
             }
             else
             {

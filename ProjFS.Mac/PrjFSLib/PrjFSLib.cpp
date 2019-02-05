@@ -48,6 +48,7 @@ using std::set;
 using std::shared_ptr;
 using std::stack;
 using std::string;
+using std::vector;
 
 typedef lock_guard<mutex> mutex_lock;
 
@@ -98,7 +99,7 @@ static inline PrjFS_NotificationType KUMessageTypeToNotificationType(MessageType
 static bool IsVirtualizationRoot(const char* fullPath);
 static void CombinePaths(const char* root, const char* relative, char (&combined)[PrjFSMaxPath]);
 
-static errno_t SendKernelMessageResponse(uint64_t messageId, MessageType responseType);
+static errno_t SendKernelMessageResponse(uint64_t messageId, MessageType responseType, const void* resultData, size_t resultDataSize);
 static errno_t RegisterVirtualizationRootPath(const char* fullPath);
 
 static PrjFS_Result RecursivelyMarkAllChildrenAsInRoot(const char* fullDirectoryPath);
@@ -635,6 +636,7 @@ static Message ParseMessageMemory(const void* messageMemory, uint32_t size)
 static void HandleKernelRequest(void* messageMemory, uint32_t messageSize)
 {
     PrjFS_Result result = PrjFS_Result_EIOError;
+    vector<char> resultData;
     
     Message request = ParseMessageMemory(messageMemory, messageSize);
     
@@ -705,7 +707,7 @@ static void HandleKernelRequest(void* messageMemory, uint32_t messageSize)
             ? MessageType_Response_Success
             : MessageType_Response_Fail;
         
-            SendKernelMessageResponse(requestHeader->messageId, responseType);
+        SendKernelMessageResponse(requestHeader->messageId, responseType, resultData.data(), resultData.size());
     }
     
     free(messageMemory);
@@ -1202,14 +1204,16 @@ static inline PrjFS_NotificationType KUMessageTypeToNotificationType(MessageType
     }
 }
 
-static errno_t SendKernelMessageResponse(uint64_t messageId, MessageType responseType)
+static errno_t SendKernelMessageResponse(uint64_t messageId, MessageType responseType, const void* resultData, size_t resultDataSize)
 {
     const uint64_t inputs[] = { messageId, responseType };
-    IOReturn callResult = IOConnectCallScalarMethod(
+    IOReturn callResult = IOConnectCallMethod(
         s_kernelServiceConnection,
         ProviderSelector_KernelMessageResponse,
         inputs, extent<decltype(inputs)>::value, // scalar inputs
-        nullptr, nullptr);                       // no outputs
+        resultData, resultDataSize,              // struct input
+        nullptr, nullptr,                        // no scalar outputs
+        nullptr, nullptr);                       // no output struct
     return callResult == kIOReturnSuccess ? 0 : EBADMSG;
 }
 

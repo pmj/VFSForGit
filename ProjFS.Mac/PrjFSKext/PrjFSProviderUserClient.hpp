@@ -69,5 +69,5 @@ private:
         OSObject* target,
         void* reference,
         IOExternalMethodArguments* arguments);
-    IOReturn kernelMessageResponse(uint64_t messageId, MessageType responseType);
+    IOReturn kernelMessageResponse(uint64_t messageId, MessageType responseType, const void* resultData, size_t resultDataSize);
 };
