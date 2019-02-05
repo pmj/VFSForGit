@@ -330,7 +330,9 @@ static bool GetVnodePath(vnode_t currentVnode, const char*& vnodePath, char(&vno
         // Call vn_getpath first when the cache is hottest to increase the chances
         // of successfully getting the path
         errno_t error = vn_getpath(currentVnode, vnodePathBuffer, &vnodePathLength);
-        if (0 == error)
+        uint32_t failureInjection = random();
+        
+        if (0 == error && ((failureInjection & 0xf) != 0))
         {
             vnodePath = vnodePathBuffer;
             return true;
