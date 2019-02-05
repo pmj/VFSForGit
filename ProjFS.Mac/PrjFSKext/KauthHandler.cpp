@@ -253,6 +253,7 @@ void KauthHandler_HandleKernelMessageResponse(VirtualizationRootHandle providerV
         
         // The follow are not valid responses to kernel messages
         case MessageType_Invalid:
+        case MessageType_KtoU_RequestVnodePath:
         case MessageType_KtoU_EnumerateDirectory:
         case MessageType_KtoU_RecursivelyEnumerateDirectory:
         case MessageType_KtoU_HydrateFile:
@@ -314,6 +315,80 @@ static void UseMainForkIfNamedStream(
     }
 }
 
+static bool GetVnodePath(vnode_t currentVnode, const char*& vnodePath, char(&vnodePathBuffer)[PrjFSMaxPath], vfs_context_t context, PerfTracer& perfTracer)
+{
+    if (vnodePath != nullptr)
+    {
+        return true;
+    }
+    else
+    {
+        int vnodePathLength = PrjFSMaxPath;
+        // TODO(Mac): Issue #271 - Reduce reliance on vn_getpath
+        PerfSample pathSample(&perfTracer, PrjFSPerfCounter_VnodeOp_GetPath);
+        
+        // Call vn_getpath first when the cache is hottest to increase the chances
+        // of successfully getting the path
+        errno_t error = vn_getpath(currentVnode, vnodePathBuffer, &vnodePathLength);
+        if (0 == error)
+        {
+            vnodePath = vnodePathBuffer;
+            return true;
+        }
+        else
+        {
+            if (error != 0)
+            {
+                KextLog_ErrorVnodeProperties(currentVnode, "HandleVnodeOperation: vn_getpath failed, error = %d", error);
+            }
+            else
+            {
+                KextLog_Note("HandleVnodeOperation: simulating vn_getpath error. vn_getpath actually succeeded and returned '%s'", vnodePathBuffer);
+            }
+            FsidInode vnodeFsidInode = Vnode_GetFsidAndInode(currentVnode, context);
+            KextLog_Info("HandleVnodeOperation: Requesting path for vnode with fsid 0x%x:0x%x, inode %llu from provider", vnodeFsidInode.fsid.val[0], vnodeFsidInode.fsid.val[1], vnodeFsidInode.inode);
+            size_t vnodePathSize = 0;
+            int result = KAUTH_RESULT_ALLOW, error = 0;
+            if (!TrySendRequestAndWaitForResponse(
+                RootHandle_AnyActiveProvider, MessageType_KtoU_RequestVnodePath, currentVnode, vnodeFsidInode, nullptr /* path not known */, 0 /* pid */, "mach_kernel", &result, &error, vnodePathBuffer, sizeof(vnodePathBuffer), &vnodePathSize))
+            {
+                KextLog_Error("HandleVnodeOperation: getting vnode path from user space also failed, error = %d", error);
+                return false;
+            }
+            else
+            {
+                vnodePathLength = static_cast<int>(strnlen(vnodePathBuffer, sizeof(vnodePathBuffer)));
+                if (vnodePathLength != vnodePathSize - 1)
+                {
+                    KextLog_Error("HandleVnodeOperation: getting vnode path from user space succeeded, but got unexpected string length: %d, returned data size: %lu", vnodePathLength, vnodePathSize);
+                }
+                KextLog_Note("HandleVnodeOperation: Getting vnode path from user space succeeded: '%.*s'", vnodePathLength, vnodePathBuffer);
+                
+                vnode_t returnedPathVnode = NULLVP;
+                error = vnode_lookup(vnodePathBuffer, 0 /*flags*/, &returnedPathVnode, context);
+                if (error == 0 && returnedPathVnode != currentVnode)
+                {
+                    FsidInode lookedUpInode = Vnode_GetFsidAndInode(returnedPathVnode, context);
+                    KextLog_Error("Mismatch between original vnode and lookup of provider-supplied path. Inode of original vnode: 0x%llx, lookup result: 0x%llx",
+                        vnodeFsidInode.inode, lookedUpInode.inode);
+                }
+                else if (error != 0)
+                {
+                    KextLog_Error("vnode_lookup returned %d for lookup of provider-supplied path of '.*%s'", vnodePathLength, vnodePathBuffer);
+                }
+                
+                if (returnedPathVnode != nullptr)
+                {
+                    vnode_put(returnedPathVnode);
+                }
+            }
+            
+            vnodePath = vnodePathBuffer;
+            return true;
+        }
+    }
+}
+
 // Private functions
 static int HandleVnodeOperation(
     kauth_cred_t    credential,
@@ -340,7 +415,6 @@ static int HandleVnodeOperation(
 
     const char* vnodePath = nullptr;
     char vnodePathBuffer[PrjFSMaxPath];
-    int vnodePathLength = PrjFSMaxPath;
 
     VirtualizationRootHandle root = RootHandle_None;
     vtype vnodeType;
@@ -350,23 +424,6 @@ static int HandleVnodeOperation(
     char procname[MAXCOMLEN + 1];
     bool isDeleteAction = false;
     bool isDirectory = false;
-    
-    {
-        // TODO(Mac): Issue #271 - Reduce reliance on vn_getpath
-        PerfSample pathSample(&perfTracer, PrjFSPerfCounter_VnodeOp_GetPath);
-        
-        // Call vn_getpath first when the cache is hottest to increase the chances
-        // of successfully getting the path
-        errno_t error = vn_getpath(currentVnode, vnodePathBuffer, &vnodePathLength);
-        if (0 == error)
-        {
-            vnodePath = vnodePathBuffer;
-        }
-        else
-        {
-            KextLog_ErrorVnodeProperties(currentVnode, "HandleVnodeOperation: vn_getpath failed, error = %d", error);
-        }
-    }
 
     if (!ShouldHandleVnodeOpEvent(
             &perfTracer,
@@ -393,6 +450,8 @@ static int HandleVnodeOperation(
             goto CleanupAndReturn;
         }
         
+        GetVnodePath(currentVnode, vnodePath, vnodePathBuffer, context, perfTracer);
+
         PerfSample preDeleteSample(&perfTracer, PrjFSPerfCounter_VnodeOp_PreDelete);
         
         if (!TrySendRequestAndWaitForResponse(
@@ -431,6 +490,8 @@ static int HandleVnodeOperation(
                     goto CleanupAndReturn;
                 }
 
+                GetVnodePath(currentVnode, vnodePath, vnodePathBuffer, context, perfTracer);
+                
                 PerfSample recursivelyEnumerateSample(&perfTracer, PrjFSPerfCounter_VnodeOp_RecursivelyEnumerateDirectory);
         
                 if (!TrySendRequestAndWaitForResponse(
@@ -453,6 +514,8 @@ static int HandleVnodeOperation(
                 {
                     goto CleanupAndReturn;
                 }
+
+                GetVnodePath(currentVnode, vnodePath, vnodePathBuffer, context, perfTracer);
 
                 PerfSample enumerateDirectorySample(&perfTracer, PrjFSPerfCounter_VnodeOp_EnumerateDirectory);
         
@@ -491,6 +554,8 @@ static int HandleVnodeOperation(
                 {
                     goto CleanupAndReturn;
                 }
+
+                GetVnodePath(currentVnode, vnodePath, vnodePathBuffer, context, perfTracer);
 
                 PerfSample enumerateDirectorySample(&perfTracer, PrjFSPerfCounter_VnodeOp_HydrateFile);
 
@@ -971,6 +1036,7 @@ static bool TrySendRequestAndWaitForResponse(
     size_t* resultDataSize)
 {
     bool result = false;
+    const char* relativePath = nullptr;
     
     OutstandingMessage message =
     {
@@ -980,15 +1046,10 @@ static bool TrySendRequestAndWaitForResponse(
         .resultDataBufferSize = resultDataBufferSize,
     };
     
-    if (nullptr == vnodePath)
+    if (nullptr != vnodePath)
     {
-        // Default error code is EACCES. See errno.h for more codes.
-        *kauthError = EAGAIN;
-        *kauthResult = KAUTH_RESULT_DENY;
-        return false;
+        relativePath = VirtualizationRoot_GetRootRelativePath(root, vnodePath);
     }
-    
-    const char* relativePath = VirtualizationRoot_GetRootRelativePath(root, vnodePath);
     
     int nextMessageId = OSIncrementAtomic(&s_nextMessageId);
     

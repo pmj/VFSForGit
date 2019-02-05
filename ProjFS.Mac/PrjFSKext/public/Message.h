@@ -10,6 +10,8 @@ typedef enum
     MessageType_Invalid = 0,
 	
     // Messages from kernel to user mode
+    MessageType_KtoU_RequestVnodePath, // Given fsid+inode, provider should respond with nul-terminated path to the file
+
     MessageType_KtoU_EnumerateDirectory = 3,
     MessageType_KtoU_RecursivelyEnumerateDirectory,
     MessageType_KtoU_HydrateFile,
