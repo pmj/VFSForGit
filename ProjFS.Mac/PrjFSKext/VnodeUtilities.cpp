@@ -10,8 +10,8 @@ FsidInode Vnode_GetFsidAndInode(vnode_t vnode, vfs_context_t context)
 {
     vnode_attr attrs;
     VATTR_INIT(&attrs);
-    // TODO: check this is correct for hardlinked files
-    VATTR_WANTED(&attrs, va_fileid);
+    // va_linkid is unique per hard link, va_fileid only identifies the content
+    VATTR_WANTED(&attrs, va_linkid);
 
     int errno = vnode_getattr(vnode, &attrs, context);
     if (0 != errno)
@@ -20,7 +20,7 @@ FsidInode Vnode_GetFsidAndInode(vnode_t vnode, vfs_context_t context)
     }
     
     vfsstatfs* statfs = vfs_statfs(vnode_mount(vnode));
-    return { statfs->f_fsid, attrs.va_fileid };
+    return { statfs->f_fsid, attrs.va_linkid };
 }
 
 SizeOrError Vnode_ReadXattr(vnode_t vnode, const char* xattrName, void* buffer, size_t bufferSize)
