@@ -1,5 +1,5 @@
 #include "public/PrjFSCommon.h"
-#include "../PrjFSKextTests/VnodeMock.h"
+#include <Kernel/sys/vnode.h>
 #include <sys/kernel_types.h>
 #include "../PrjFSKextTests/KextLogMock.h"
 

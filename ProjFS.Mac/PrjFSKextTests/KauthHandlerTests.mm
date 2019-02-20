@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#include "../PrjFSKextTests/VnodeMock.h"
 #include "../PrjFSKext/KauthHandlerTestable.hpp"
 
 @interface KauthHandlerTests : XCTestCase
