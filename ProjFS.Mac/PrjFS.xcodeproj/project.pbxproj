@@ -175,6 +175,7 @@
 		4A8C13A021F23EE800002878 /* libPrjFSKextTestable.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libPrjFSKextTestable.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A8C13AA21F268FE00002878 /* PrjFSKextTests.exp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.exports; path = PrjFSKextTests.exp; sourceTree = "<group>"; };
 		F557623E22009F0E005DE35E /* KextLogMock.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KextLogMock.h; sourceTree = "<group>"; };
+		F5B44EAB221DDEB600C4E6E3 /* VnodeMock.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VnodeMock.h; sourceTree = "<group>"; };
 		F5E39C7721F1118D006D65C2 /* PrjFSKextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrjFSKextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F5E39C7921F1118D006D65C2 /* KauthHandlerTests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KauthHandlerTests.mm; sourceTree = "<group>"; };
 		F5E39C7B21F1118D006D65C2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -344,6 +345,7 @@
 				F5E39C7B21F1118D006D65C2 /* Info.plist */,
 				4A8C13AA21F268FE00002878 /* PrjFSKextTests.exp */,
 				F557623E22009F0E005DE35E /* KextLogMock.h */,
+				F5B44EAB221DDEB600C4E6E3 /* VnodeMock.h */,
 			);
 			path = PrjFSKextTests;
 			sourceTree = "<group>";

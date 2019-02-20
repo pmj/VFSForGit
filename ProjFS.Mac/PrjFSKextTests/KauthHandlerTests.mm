@@ -46,4 +46,21 @@
     XCTAssertFalse(ShouldIgnoreVnodeType(VCPLX, NULL));
 }
 
+- (void)testFileFlaggedInRoot {
+    bool fileFlaggedInRoot;
+    vnode mockVnode;
+
+    // These values are only used for logging and don't impact the test
+    mockVnode.isrecycled = false;
+    mockVnode.vnodeType = VNON;
+
+    mockVnode.attr = FileFlags_IsInVirtualizationRoot;
+    XCTAssertTrue(TryGetFileIsFlaggedAsInRoot(&mockVnode, NULL, &fileFlaggedInRoot));
+    XCTAssertTrue(fileFlaggedInRoot);
+
+    mockVnode.attr = FileFlags_IsEmpty;
+    XCTAssertTrue(TryGetFileIsFlaggedAsInRoot(&mockVnode, NULL, &fileFlaggedInRoot));
+    XCTAssertTrue(fileFlaggedInRoot);
+}
+
 @end
