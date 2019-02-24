@@ -33,7 +33,7 @@ private:
     MountPointer mountPoint;
     
     uint64_t inode;
-
+    uint32_t vid;
     int32_t ioCount = 0;
     bool isRecycling = false;
     
@@ -53,12 +53,16 @@ private:
     
 public:
     static VnodePointer Create(const MountPointer& mount, const char* path, vtype vnodeType = VREG);
+    static VnodePointer Create(const MountPointer& mount, const char* path, vtype vnodeType, uint64_t inode);
     ~vnode();
     
     uint64_t GetInode() const { return this->inode; }
+    uint32_t GetVid() const { return this->vid; }
     void SetGetPathError(errno_t error);
+    void StartRecycling();
 
     friend int vnode_isrecycled(vnode_t vnode);
+    friend uint32_t vnode_vid(vnode_t vnode);
     friend const char* vnode_getname(vnode_t vnode);
     friend vtype vnode_vtype(vnode_t vnode);
     friend mount_t vnode_mount(vnode_t vnode);
