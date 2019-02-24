@@ -1,7 +1,12 @@
 #ifndef Memory_h
 #define Memory_h
 
+#if !defined(KEXT_UNIT_TESTING) || defined(TESTABLE_KEXT_TARGET) // Building kext
 #include <kern/assert.h>
+#else // building unit tests/mocks
+#include <cassert>
+#include <mach/kern_return.h>
+#endif
 
 kern_return_t Memory_Init();
 kern_return_t Memory_Cleanup();
