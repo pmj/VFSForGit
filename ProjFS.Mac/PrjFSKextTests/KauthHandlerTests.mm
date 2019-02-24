@@ -1,10 +1,16 @@
 #import <XCTest/XCTest.h>
 #include "../PrjFSKext/KauthHandlerTestable.hpp"
+#include "MockVnodeAndMount.hpp"
 
 @interface KauthHandlerTests : XCTestCase
 @end
 
 @implementation KauthHandlerTests
+
+- (void) tearDown
+{
+    MockVnodes_CheckAndClear();
+}
 
 - (void)testActionBitIsSet {
     XCTAssertTrue(ActionBitIsSet(KAUTH_VNODE_READ_DATA, KAUTH_VNODE_READ_DATA));
@@ -33,6 +39,8 @@
 }
 
 - (void)testShouldIgnoreVnodeType {
+    MountPointer testMount = mount::Create("hfs", fsid_t{}, 0);
+    VnodePointer testVnode = vnode::Create(testMount, "/foo");
     XCTAssertTrue(ShouldIgnoreVnodeType(VNON, NULL));
     XCTAssertTrue(ShouldIgnoreVnodeType(VBLK, NULL));
     XCTAssertTrue(ShouldIgnoreVnodeType(VCHR, NULL));
@@ -42,9 +50,9 @@
     XCTAssertFalse(ShouldIgnoreVnodeType(VREG, NULL));
     XCTAssertFalse(ShouldIgnoreVnodeType(VDIR, NULL));
     XCTAssertFalse(ShouldIgnoreVnodeType(VLNK, NULL));
-    XCTAssertFalse(ShouldIgnoreVnodeType(VSTR, NULL));
-    XCTAssertFalse(ShouldIgnoreVnodeType(VCPLX, NULL));
-    XCTAssertFalse(ShouldIgnoreVnodeType(static_cast<vtype>(1000), NULL));
+    XCTAssertFalse(ShouldIgnoreVnodeType(VSTR, testVnode.get()));
+    XCTAssertFalse(ShouldIgnoreVnodeType(VCPLX, testVnode.get()));
+    XCTAssertFalse(ShouldIgnoreVnodeType(static_cast<vtype>(1000), testVnode.get()));
 }
 
 @end
