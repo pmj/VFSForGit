@@ -1,4 +1,5 @@
 #include "MockVnodeAndMount.hpp"
+#include "../PrjFSKext/VnodeUtilities.hpp"
 #include "KextMockUtilities.hpp"
 #include <unordered_map>
 #include <sys/errno.h>
@@ -91,7 +92,7 @@ int vnode_isrecycled(vnode_t vnode)
 
 const char* vnode_getname(vnode_t vnode)
 {
-    return vnode->name;
+    return vnode->GetName();
 }
 
 void vnode_putname(const char* name)
@@ -106,6 +107,7 @@ int vnode_isdir(vnode_t vnode)
 
 int vn_getpath(vnode_t vnode, char* pathBuffer, int* pathLengthInOut)
 {
+    assert(*pathLengthInOut >= MAXPATHLEN);
     if (vnode->getPathError != 0)
     {
         return vnode->getPathError;
@@ -125,7 +127,7 @@ int vn_getpath(vnode_t vnode, char* pathBuffer, int* pathLengthInOut)
 // TODO: Perhaps switch to the real version of this function and mock the KPIs it uses
 FsidInode Vnode_GetFsidAndInode(vnode_t vnode, vfs_context_t vfsContext)
 {
-    return FsidInode{ vnode->mountPoint->statfs.f_fsid, vnode->inode };
+    return FsidInode{ vnode->GetMountPoint()->GetFsid(), vnode->GetInode() };
 }
 
 errno_t vnode_lookup(const char* path, int flags, vnode_t* foundVnode, vfs_context_t vfsContext)
@@ -138,8 +140,12 @@ errno_t vnode_lookup(const char* path, int flags, vnode_t* foundVnode, vfs_conte
     else if (VnodePointer vnode = found->second.lock())
     {
         // vnode_lookup returns a vnode with an iocount
-        ++vnode->ioCount;
-        *foundVnode = vnode.get();
+        errno_t error = vnode->RetainIOCount();
+        if (error == 0)
+        {
+            *foundVnode = vnode.get();
+        }
+        
         return 0;
     }
     else
@@ -151,7 +157,7 @@ errno_t vnode_lookup(const char* path, int flags, vnode_t* foundVnode, vfs_conte
 
 uint32_t vnode_vid(vnode_t vnode)
 {
-    return vnode->vid;
+    return vnode->GetVid();
 }
 
 vtype vnode_vtype(vnode_t vnode)
@@ -161,21 +167,31 @@ vtype vnode_vtype(vnode_t vnode)
 
 mount_t vnode_mount(vnode_t vnode)
 {
-    return vnode->mountPoint.get();
+    return vnode->GetMountPoint();
+}
+
+void vnode::ReleaseIOCount()
+{
+    assert(this->ioCount > 0);
+    --this->ioCount;
 }
 
 int vnode_put(vnode_t vnode)
 {
-    assert(vnode->ioCount > 0);
-    --vnode->ioCount;
+    vnode->ReleaseIOCount();
     return 0;
 }
 
 int vnode_get(vnode_t vnode)
 {
-    if (vnode->ioCount > 0 || !vnode->isRecycling)
+    return vnode->RetainIOCount();
+}
+
+errno_t vnode::RetainIOCount()
+{
+    if (this->ioCount > 0 || !this->isRecycling)
     {
-        ++vnode->ioCount;
+        ++this->ioCount;
         return 0;
     }
     else
