@@ -17,12 +17,23 @@ private:
     uint64_t nextInode;
     
 public:
-    static MountPointer Create(const char* fileSystemTypeName, fsid_t fsid, uint64_t initialInode);
+    static MountPointer Create(const char* fileSystemTypeName = "hfs", fsid_t fsid = fsid_t{}, uint64_t initialInode = 0);
     
     inline fsid_t GetFsid() const { return this->statfs.f_fsid; }
     
     friend struct vnode;
     friend vfsstatfs* vfs_statfs(mount_t mountPoint);
+};
+
+struct VnodeMockErrors
+{
+    errno_t getpath = 0;
+    errno_t getattr = 0;
+};
+
+struct VnodeMockValues
+{
+    int getattr = 0;
 };
 
 struct vnode
@@ -34,17 +45,16 @@ private:
 public:
     bool isRecycling = false;
     vtype type = VREG;
+    VnodeMockErrors errors;
+    VnodeMockValues values;
 
 private:
     uint64_t inode;
     uint32_t vid;
     int32_t ioCount = 0;
-    errno_t getPathError = 0;
     
     std::string path;
     const char* name;
-    int attr = 0;
-    int vnodeGetAttrReturnCode = 0;
     
     void SetPath(const std::string& path);
 
@@ -63,10 +73,7 @@ public:
     const char* GetName() const        { return this->name; }
     mount_t GetMountPoint() const      { return this->mountPoint.get(); }
 
-    void SetGetPathError(errno_t error);
     void StartRecycling();
-    void SetAttr(int attr);
-    void SetGetAttrReturnCode(int code);
 
     errno_t RetainIOCount();
     void ReleaseIOCount();
