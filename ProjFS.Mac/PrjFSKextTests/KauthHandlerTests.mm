@@ -39,7 +39,7 @@
 }
 
 - (void)testShouldIgnoreVnodeType {
-    MountPointer testMount = mount::Create("hfs", fsid_t{}, 0);
+    MountPointer testMount = mount::Create();
     VnodePointer testVnode = vnode::Create(testMount, "/foo");
     XCTAssertTrue(ShouldIgnoreVnodeType(VNON, NULL));
     XCTAssertTrue(ShouldIgnoreVnodeType(VBLK, NULL));
@@ -53,6 +53,31 @@
     XCTAssertFalse(ShouldIgnoreVnodeType(VSTR, testVnode.get()));
     XCTAssertFalse(ShouldIgnoreVnodeType(VCPLX, testVnode.get()));
     XCTAssertFalse(ShouldIgnoreVnodeType(static_cast<vtype>(1000), testVnode.get()));
+}
+
+- (void)testFileFlaggedInRoot {
+    bool fileFlaggedInRoot;
+    MountPointer testMount = mount::Create();
+    VnodePointer testVnode = vnode::Create(testMount, "/foo");
+    
+    testVnode->values.getattr = FileFlags_IsInVirtualizationRoot;
+    XCTAssertTrue(TryGetFileIsFlaggedAsInRoot(testVnode.get(), NULL, &fileFlaggedInRoot));
+    XCTAssertTrue(fileFlaggedInRoot);
+    
+    testVnode->values.getattr = FileFlags_IsEmpty;
+    XCTAssertTrue(TryGetFileIsFlaggedAsInRoot(testVnode.get(), NULL, &fileFlaggedInRoot));
+    XCTAssertFalse(fileFlaggedInRoot);
+    
+    testVnode->values.getattr = FileFlags_Invalid;
+    XCTAssertTrue(TryGetFileIsFlaggedAsInRoot(testVnode.get(), NULL, &fileFlaggedInRoot));
+    XCTAssertFalse(fileFlaggedInRoot);
+    
+    testVnode->values.getattr = 100;
+    XCTAssertTrue(TryGetFileIsFlaggedAsInRoot(testVnode.get(), NULL, &fileFlaggedInRoot));
+    XCTAssertFalse(fileFlaggedInRoot);
+
+    testVnode->errors.getattr = EBADF;
+    XCTAssertFalse(TryGetFileIsFlaggedAsInRoot(testVnode.get(), NULL, &fileFlaggedInRoot));
 }
 
 @end

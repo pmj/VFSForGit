@@ -106,7 +106,7 @@ void ProviderUserClient_UpdatePathProperty(PrjFSProviderUserClient* userClient, 
     const char* path = "/Users/test/code/RepoNotInNamecache";
     
     VnodePointer vnode = vnode::Create(self->testMountPoint, path, VDIR);
-    vnode->SetGetPathError(EINVAL);
+    vnode->errors.getpath = EINVAL;
     
     VirtualizationRootResult result = VirtualizationRoot_RegisterProviderForPath(&self->dummyClient, self->dummyClientPid, path);
     XCTAssertEqual(result.error, EINVAL);
