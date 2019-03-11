@@ -45,7 +45,6 @@ private:
     
     bool isRecycling = false;
     vtype type = VREG;
-
     uint64_t inode;
     uint32_t vid;
     int32_t ioCount = 0;
@@ -56,7 +55,7 @@ private:
     void SetPath(const std::string& path);
 
     explicit vnode(const std::shared_ptr<mount>& mount);
-    
+
     vnode(const vnode&) = delete;
     vnode& operator=(const vnode&) = delete;
     

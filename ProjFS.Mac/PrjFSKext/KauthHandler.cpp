@@ -63,7 +63,7 @@ static bool TrySendRequestAndWaitForResponse(
 static void AbortAllOutstandingEvents();
 KEXT_STATIC bool ShouldIgnoreVnodeType(vtype vnodeType, vnode_t vnode);
 
-static bool ShouldHandleVnodeOpEvent(
+KEXT_STATIC bool ShouldHandleVnodeOpEvent(
     // In params:
     PerfTracer* perfTracer,
     vfs_context_t _Nonnull context,
@@ -723,7 +723,7 @@ CleanupAndReturn:
     return KAUTH_RESULT_DEFER;
 }
 
-static bool ShouldHandleVnodeOpEvent(
+KEXT_STATIC bool ShouldHandleVnodeOpEvent(
     // In params:
     PerfTracer* perfTracer,
     vfs_context_t _Nonnull context,
@@ -737,7 +737,7 @@ static bool ShouldHandleVnodeOpEvent(
     char procname[MAXCOMLEN + 1],
     int* kauthResult,
     int* kauthError)
-{
+   {
     PerfSample handleVnodeSample(perfTracer, PrjFSPerfCounter_VnodeOp_ShouldHandle);
 
     *kauthResult = KAUTH_RESULT_DEFER;
