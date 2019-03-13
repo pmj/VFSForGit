@@ -32,11 +32,6 @@ struct VnodeMockErrors
     errno_t getattr = 0;
 };
 
-struct VnodeMockValues
-{
-    int getattr = 0;
-};
-
 struct vnode
 {
 private:
@@ -55,7 +50,7 @@ private:
     void SetPath(const std::string& path);
 
     explicit vnode(const std::shared_ptr<mount>& mount);
-
+    
     vnode(const vnode&) = delete;
     vnode& operator=(const vnode&) = delete;
     
@@ -65,7 +60,7 @@ public:
     ~vnode();
 
     VnodeMockErrors errors;
-    VnodeMockValues values;
+    vnode_attr attrValues;
     
     uint64_t GetInode() const          { return this->inode; }
     uint32_t GetVid() const            { return this->vid; }
