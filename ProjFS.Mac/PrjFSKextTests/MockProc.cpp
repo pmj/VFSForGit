@@ -21,3 +21,8 @@ void SetProcName(char* procName)
     return_proc_name = strdup(procName);
 }
 
+
+proc_t vfs_context_proc(vfs_context_t ctx)
+{
+    return NULL;
+}

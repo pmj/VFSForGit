@@ -7,11 +7,6 @@
 
 using std::shared_ptr;
 
-proc_t vfs_context_proc(vfs_context_t ctx)
-{
-    return NULL;
-}
-
 @interface KauthHandlerTests : XCTestCase
 @end
 
