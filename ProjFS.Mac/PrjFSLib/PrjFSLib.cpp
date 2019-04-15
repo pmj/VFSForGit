@@ -629,6 +629,21 @@ PrjFS_Result PrjFS_WriteFileContents(
 // Private functions
 
 
+static void ParseMessageString(uint16_t stringSize,  uint32_t& messageBytesRemain, const char*& messagePosition, const char*& outParsedString)
+{
+    if (stringSize > 0)
+    {
+        assert(messageBytesRemain >= stringSize);
+        const char* string = messagePosition;
+        // Path string should fit exactly in reserved memory, with nul terminator in end position
+        assert(strnlen(string, stringSize) == stringSize - 1);
+        messagePosition += stringSize;
+        messageBytesRemain -= stringSize;
+        
+        outParsedString = string;
+    }
+}
+
 static Message ParseMessageMemory(const void* messageMemory, uint32_t size)
 {
     const MessageHeader* header = static_cast<const MessageHeader*>(messageMemory);
@@ -643,22 +658,10 @@ static Message ParseMessageMemory(const void* messageMemory, uint32_t size)
     
     const char* messagePosition = static_cast<const char*>(messageMemory) + sizeof(*header);
     uint32_t messageBytesRemain = size - sizeof(*header);
-    for (unsigned i = 0; i < extent<decltype(parsedMessage.strings)>::value; ++i)
-    {
-        if (header->stringSizesBytes[i] > 0)
-        {
-            uint16_t stringSize = header->stringSizesBytes[i];
-            assert(messageBytesRemain >= stringSize);
-            const char* string = messagePosition;
-            // Path string should fit exactly in reserved memory, with nul terminator in end position
-            assert(strnlen(string, stringSize) == stringSize - 1);
-            messagePosition += stringSize;
-            messageBytesRemain -= stringSize;
-            
-            parsedMessage.strings[i] = string;
-        }
-    }
-    
+
+    ParseMessageString(header->pathSizeBytes, messageBytesRemain, messagePosition, parsedMessage.path);
+    ParseMessageString(header->fromPathSizeBytes, messageBytesRemain, messagePosition, parsedMessage.fromPath);
+
     assert(messageBytesRemain == 0);
 
     return parsedMessage;
