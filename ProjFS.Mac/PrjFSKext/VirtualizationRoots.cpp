@@ -207,7 +207,7 @@ static VirtualizationRootHandle FindOrDetectRootAtVnode(vnode_t _Nonnull vnode, 
             // TODO: check xattr contents
             
             const char* path = nullptr;
-#if DEBUG // Offline roots shouldn't need their path filled, and vn_getpath() may fail anyway. Poison the value so any dependency will trip over it.
+#if 0 // Offline roots shouldn't need their path filled, and vn_getpath() may fail anyway. Poison the value so any dependency will trip over it.
             char pathBuffer[PrjFSMaxPath + 6] = "DEBUG:";
             int pathLength = static_cast<int>(sizeof(pathBuffer) - strlen(pathBuffer));
             assertf(pathLength >= PATH_MAX, "Poisoning the string shouldn't make the buffer too short (vn_getpath expects PATH_MAX = %u, got %u)", PATH_MAX, pathLength);
@@ -400,10 +400,7 @@ KEXT_STATIC VirtualizationRootHandle InsertVirtualizationRoot_Locked(PrjFSProvid
         root->rootFsid = persistentIds.fsid;
         root->rootInode = persistentIds.inode;
 
-        if (path != nullptr)
-        {
-            strlcpy(root->path, path, sizeof(root->path));
-        }
+        strlcpy(root->path, path, sizeof(root->path));
     }
     
     return rootIndex;
