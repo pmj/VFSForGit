@@ -544,8 +544,6 @@ void ActiveProvider_Disconnect(VirtualizationRootHandle rootIndex, PrjFSProvider
         vnode_put(root->rootVNode);
         root->providerPid = 0;
         
-        root->providerUserClient = nullptr;
-
         RWLock_DropExclusiveToShared(s_virtualizationRootsLock);
 
         ProviderMessaging_AbortOutstandingEventsForProvider(rootIndex);
