@@ -21,7 +21,11 @@
 using std::make_tuple;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using KextMock::_;
+
+// Darwin version of running kernel
+int version_major = 18;
 
 class PrjFSProviderUserClient
 {
@@ -41,9 +45,9 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
 @implementation HandleVnodeOperationTests
 {
     vfs_context_t context;
-    const char* repoPath;
-    const char* filePath;
-    const char* dirPath;
+    string repoPath;
+    string filePath;
+    string dirPath;
     VirtualizationRootHandle dummyRepoHandle;
     PrjFSProviderUserClient dummyClient;
     pid_t dummyClientPid;
@@ -75,7 +79,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     testDirVnode = testMount->CreateVnodeTree(dirPath, VDIR);
 
     // Register provider for the repository path (Simulate a mount)
-    VirtualizationRootResult result = VirtualizationRoot_RegisterProviderForPath(&dummyClient, dummyClientPid, repoPath);
+    VirtualizationRootResult result = VirtualizationRoot_RegisterProviderForPath(&dummyClient, dummyClientPid, repoPath.c_str());
     XCTAssertEqual(result.error, 0);
     self->dummyRepoHandle = result.root;
 
@@ -125,8 +129,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
     SetPrjFSFileXattrData(testFileVnode);
     
-    const int actionCount = 9;
-    kauth_action_t actions[actionCount] =
+    kauth_action_t actions[] =
     {
         KAUTH_VNODE_READ_ATTRIBUTES,
         KAUTH_VNODE_WRITE_ATTRIBUTES,
@@ -135,10 +138,10 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
         KAUTH_VNODE_READ_DATA,
         KAUTH_VNODE_WRITE_DATA,
         KAUTH_VNODE_EXECUTE,
-        KAUTH_VNODE_DELETE,
         KAUTH_VNODE_APPEND_DATA,
     };
-    
+    const int actionCount = std::extent<decltype(actions)>::value;
+
     for (int i = 0; i < actionCount; i++)
     {
         XCTAssertTrue(HandleVnodeOperation(
@@ -164,6 +167,105 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
                 nullptr));
         MockCalls::Clear();
     }
+}
+
+- (void) testFileDeleteHydratesOnlyWhenNecessary
+{
+    testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
+    SetPrjFSFileXattrData(testFileVnode);
+    
+    // On Mojave, no hydration:
+    InitPendingRenames();
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+    XCTAssertFalse(
+        MockCalls::DidCallFunction(
+            ProviderMessaging_TrySendRequestAndWaitForResponse,
+            _,
+            MessageType_KtoU_HydrateFile,
+            testFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr));
+    MockCalls::Clear();
+    CleanupPendingRenames();
+    
+    // On High Sierra, delete causes hydration:
+    version_major = 17;
+    InitPendingRenames();
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+    XCTAssertTrue(
+        MockCalls::DidCallFunction(
+            ProviderMessaging_TrySendRequestAndWaitForResponse,
+            _,
+            MessageType_KtoU_HydrateFile,
+            testFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr));
+    MockCalls::Clear();
+    CleanupPendingRenames();
+    version_major = 18;
+}
+
+- (void) testRenamingEmptyFileHydrates
+{
+    testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
+    SetPrjFSFileXattrData(testFileVnode);
+    
+    string renamedFilePath = filePath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        reinterpret_cast<uintptr_t>(filePath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedFilePath.c_str()),
+        0); // unused
+    
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+    XCTAssertTrue(
+        MockCalls::DidCallFunction(
+            ProviderMessaging_TrySendRequestAndWaitForResponse,
+            _,
+            MessageType_KtoU_HydrateFile,
+            testFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr));
+    MockCalls::Clear();
 }
 
 - (void) testVnodeAccessCausesNoEvent {
@@ -325,8 +427,20 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     }
 }
 
-- (void) testDeleteFile {
+- (void) testHydrationOnDeleteWhenRenamingFile {
     testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
+
+    // Hydration on delete only occurs if deletion is caused by rename
+    string renamedFilePath = filePath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        reinterpret_cast<uintptr_t>(filePath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedFilePath.c_str()),
+        0); // unused
+
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,
         nullptr,
@@ -364,8 +478,166 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     XCTAssertTrue(MockCalls::CallCount(ProviderMessaging_TrySendRequestAndWaitForResponse) == 2);
 }
 
-- (void) testDeleteDir {
+- (void) testDeleteFileNonRenamed
+{
+    testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
+
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+    XCTAssertTrue(MockCalls::DidCallFunction(
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        _,
+        MessageType_KtoU_NotifyFilePreDelete,
+        testFileVnode.get(),
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        nullptr));
+    
+    // Should not hydrate if delete is not caused by rename
+    XCTAssertFalse(MockCalls::DidCallFunction(
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        _,
+        MessageType_KtoU_HydrateFile,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        nullptr));
+}
+
+- (void) testConcurrentRenameOperationRecording
+{
+    self->testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
+
+    string otherFilePath = repoPath + "/otherFile";
+    shared_ptr<vnode> otherTestFileVnode = testMount->CreateVnodeTree(otherFilePath);
+    otherTestFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
+
+    string renamedFilePath = filePath + "_renamed";
+    string renamedOtherFilePath = otherFilePath + "_renamed";
+
+    MockProcess_SetCurrentThreadIndex(0);
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        reinterpret_cast<uintptr_t>(filePath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedFilePath.c_str()),
+        0); // unused
+
+    MockProcess_SetCurrentThreadIndex(1);
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(otherTestFileVnode.get()),
+        reinterpret_cast<uintptr_t>(otherFilePath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedOtherFilePath.c_str()),
+        0); // unused
+
+    MockProcess_SetCurrentThreadIndex(0);
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(testFileVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+
+    MockProcess_SetCurrentThreadIndex(1);
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(otherTestFileVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+
+    XCTAssertTrue(MockCalls::DidCallFunctionsInOrder(
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        make_tuple(
+            _,
+            MessageType_KtoU_NotifyFilePreDelete,
+            testFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr),
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        make_tuple(
+           _,
+            MessageType_KtoU_HydrateFile,
+            testFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr),
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        make_tuple(
+            _,
+            MessageType_KtoU_NotifyFilePreDelete,
+            otherTestFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr),
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        make_tuple(
+           _,
+            MessageType_KtoU_HydrateFile,
+            otherTestFileVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr))
+    );
+    XCTAssertTrue(MockCalls::CallCount(ProviderMessaging_TrySendRequestAndWaitForResponse) == 4);
+}
+
+
+- (void) testHydrationOnDeleteWhenRenamingDirectory
+{
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
+
+    // Hydration on delete only occurs if deletion is caused by rename
+    string renamedDirPath = self->dirPath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
+        reinterpret_cast<uintptr_t>(self->dirPath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedDirPath.c_str()),
+        0); // unused
+
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,
         nullptr,
@@ -401,6 +673,45 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
             nullptr))
     );
     XCTAssertTrue(MockCalls::CallCount(ProviderMessaging_TrySendRequestAndWaitForResponse) == 2);
+}
+
+- (void) testDeleteDirNonRenamed
+{
+    testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
+    XCTAssertTrue(HandleVnodeOperation(
+        nullptr,
+        nullptr,
+        KAUTH_VNODE_DELETE,
+        reinterpret_cast<uintptr_t>(context),
+        reinterpret_cast<uintptr_t>(testDirVnode.get()),
+        0,
+        0) == KAUTH_RESULT_DEFER);
+    XCTAssertTrue(MockCalls::DidCallFunction(
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        _,
+        MessageType_KtoU_NotifyDirectoryPreDelete,
+        testDirVnode.get(),
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        nullptr));
+
+    // Should not hydrate if delete is not caused by rename
+    XCTAssertFalse(MockCalls::DidCallFunction(
+        ProviderMessaging_TrySendRequestAndWaitForResponse,
+        _,
+        MessageType_KtoU_RecursivelyEnumerateDirectory,
+        testDirVnode.get(),
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        nullptr));
 }
 
 - (void) testEmptyDirectoryEnumerates {
@@ -681,6 +992,15 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
             ActiveProvider_Disconnect(self->dummyRepoHandle, &self->dummyClient);
         });
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
+    string renameFilePath = self->filePath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
+        reinterpret_cast<uintptr_t>(self->filePath.c_str()),
+        reinterpret_cast<uintptr_t>(renameFilePath.c_str()),
+        0); // unused
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,
         nullptr,
@@ -711,6 +1031,18 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
 
 - (void) testDeleteDirectoryWhenSecondRequestFails {
     ProviderMessageMock_SetSecondRequestResult(false);
+    
+    // Hydration on delete only occurs if deletion is caused by rename
+    string renamedDirPath = self->dirPath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
+        reinterpret_cast<uintptr_t>(self->dirPath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedDirPath.c_str()),
+        0); // unused
+
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,

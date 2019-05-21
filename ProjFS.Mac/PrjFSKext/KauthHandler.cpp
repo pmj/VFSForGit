@@ -2,7 +2,10 @@
 #include <sys/kauth.h>
 #include <sys/proc.h>
 #include <kern/assert.h>
+#include <libkern/version.h>
+#include <kern/thread.h>
 
+#include "KauthHandlerPrivate.hpp"
 #include "public/PrjFSCommon.h"
 #include "public/PrjFSPerfCounter.h"
 #include "public/PrjFSXattrs.h"
@@ -19,6 +22,7 @@
 #include "ProviderMessaging.hpp"
 #include "VnodeCache.hpp"
 #include "Memory.hpp"
+#include "ArrayUtilities.hpp"
 
 #ifdef KEXT_UNIT_TESTING
 #include "KauthHandlerTestable.hpp"
@@ -28,6 +32,12 @@ enum ProviderCallbackPolicy
 {
     CallbackPolicy_AllowAny,
     CallbackPolicy_UserInitiatedOnly,
+};
+
+struct PendingRenameOperation
+{
+    vnode_t vnode;
+    thread_t thread;
 };
 
 // Function prototypes
@@ -101,11 +111,19 @@ KEXT_STATIC bool ShouldHandleFileOpEvent(
     VirtualizationRootHandle* root,
     int* pid);
 
+KEXT_STATIC bool InitPendingRenames();
+KEXT_STATIC void CleanupPendingRenames();
+KEXT_STATIC void ResizePendingRenames(uint32_t newMaxPendingRenames);
+
 // State
 static kauth_listener_t s_vnodeListener = nullptr;
 static kauth_listener_t s_fileopListener = nullptr;
 
 static atomic_int s_numActiveKauthEvents;
+static SpinLock s_renameLock;
+static PendingRenameOperation* s_pendingRenames = nullptr;
+KEXT_STATIC uint32_t s_pendingRenameCount = 0;
+KEXT_STATIC uint32_t s_maxPendingRenames = 0;
 
 // Public functions
 kern_return_t KauthHandler_Init()
@@ -130,6 +148,11 @@ kern_return_t KauthHandler_Init()
         goto CleanupAndFail;
     }
     
+    if (!InitPendingRenames())
+    {
+        goto CleanupAndFail;
+    }
+
     s_vnodeListener = kauth_listen_scope(KAUTH_SCOPE_VNODE, HandleVnodeOperation, nullptr);
     if (nullptr == s_vnodeListener)
     {
@@ -178,6 +201,8 @@ kern_return_t KauthHandler_Cleanup()
     
     WaitForListenerCompletion();
 
+    CleanupPendingRenames();
+    
     if (VnodeCache_Cleanup())
     {
         result = KERN_FAILURE;
@@ -216,6 +241,162 @@ KEXT_STATIC void UseMainForkIfNamedStream(
     }
 }
 
+KEXT_STATIC bool InitPendingRenames()
+{
+    if (version_major >= 18) // Only need to track renames on Mojave and newer
+    {
+        s_renameLock = SpinLock_Alloc();
+        s_maxPendingRenames = 8; // Arbitrary choice, should be maximum number of expected concurrent threads performing renames, but array will resize on demand
+        s_pendingRenameCount = 0;
+        s_pendingRenames = Memory_AllocArray<PendingRenameOperation>(s_maxPendingRenames);
+        if (!SpinLock_IsValid(s_renameLock) || s_pendingRenames == nullptr)
+        {
+            return false;
+        }
+
+        Array_DefaultInit(s_pendingRenames, s_maxPendingRenames);
+    }
+    
+    return true;
+}
+
+KEXT_STATIC void CleanupPendingRenames()
+{
+    if (version_major >= 18)
+    {
+        if (SpinLock_IsValid(s_renameLock))
+        {
+            SpinLock_FreeMemory(&s_renameLock);
+        }
+
+        if (s_pendingRenames != nullptr)
+        {
+            assert(s_pendingRenameCount == 0);
+            Memory_FreeArray(s_pendingRenames, s_maxPendingRenames);
+            s_pendingRenames = nullptr;
+            s_maxPendingRenames = 0;
+        }
+    }
+}
+
+KEXT_STATIC void ResizePendingRenames(uint32_t newMaxPendingRenames)
+{
+    PendingRenameOperation* newArray = Memory_AllocArray<PendingRenameOperation>(newMaxPendingRenames);
+    assert(newArray != nullptr);
+    PendingRenameOperation* arrayToFree = nullptr;
+    uint32_t arrayToFreeLength = 0;
+    
+    SpinLock_Acquire(s_renameLock);
+    {
+        if (newMaxPendingRenames > s_maxPendingRenames)
+        {
+            Array_CopyElements(newArray, s_pendingRenames, s_maxPendingRenames);
+            Array_DefaultInit(newArray + s_maxPendingRenames, newMaxPendingRenames - s_maxPendingRenames);
+            
+            arrayToFree = s_pendingRenames;
+            arrayToFreeLength = s_maxPendingRenames;
+            
+            s_pendingRenames = newArray;
+            s_maxPendingRenames = newMaxPendingRenames;
+        }
+        else
+        {
+            arrayToFree = newArray;
+            arrayToFreeLength = newMaxPendingRenames;
+        }
+    }
+    SpinLock_Release(s_renameLock);
+    
+    if (arrayToFree != nullptr)
+    {
+        assert(arrayToFreeLength > 0);
+        Memory_FreeArray(arrayToFree, arrayToFreeLength);
+    }
+}
+
+KEXT_STATIC void RecordPendingRenameOperation(vnode_t vnode)
+{
+    assertf(version_major >= 18, "This function should only be called from the KAUTH_FILEOP_WILL_RENAME handler, which is only supported by Darwin 18 and newer (version_major = %u)", version_major);
+    thread_t myThread = current_thread();
+    
+    bool resizeTable;
+    do
+    {
+        resizeTable = false;
+        uint32_t resizeTableLength = 0;
+        
+        SpinLock_Acquire(s_renameLock);
+        {
+            if (s_pendingRenameCount < s_maxPendingRenames)
+            {
+                s_pendingRenames[s_pendingRenameCount].thread = myThread;
+                s_pendingRenames[s_pendingRenameCount].vnode = vnode;
+                ++s_pendingRenameCount;
+            }
+            else
+            {
+                for (uint32_t i = 0; i < s_pendingRenameCount; ++i)
+                {
+                    assert(s_pendingRenames[i].thread != myThread);
+                }
+
+                resizeTable = true;
+                
+                resizeTableLength = MAX(1u, MIN(UINT32_MAX, s_maxPendingRenames * UINT64_C(2)));
+                assert(resizeTableLength > s_maxPendingRenames);
+            }
+        }
+        SpinLock_Release(s_renameLock);
+        
+        if (resizeTable)
+        {
+            if (resizeTableLength > 16)
+            {
+                KextLog_Error("Warning: RecordPendingRenameOperation is causing pending rename array resize to %u items.", resizeTableLength);
+            }
+            ResizePendingRenames(resizeTableLength);
+        }
+    } while (resizeTable);
+}
+
+KEXT_STATIC bool DeleteOpIsForRename(vnode_t vnode)
+{
+    if (version_major < 18)
+    {
+        // High Sierra and earlier do not support WILL_RENAME notification, so we have to assume any delete may be caused by a rename
+        assert(s_pendingRenameCount == 0);
+        assert(s_maxPendingRenames == 0);
+        return true;
+    }
+    
+    bool isRename = false;
+    
+    thread_t myThread = current_thread();
+    
+    SpinLock_Acquire(s_renameLock);
+    {
+        for (uint32_t i = 0; i < s_pendingRenameCount; ++i)
+        {
+            if (s_pendingRenames[i].thread == myThread)
+            {
+                isRename = true;
+                assert(s_pendingRenames[i].vnode == vnode);
+                --s_pendingRenameCount;
+                if (i != s_pendingRenameCount)
+                {
+                    s_pendingRenames[i] = s_pendingRenames[s_pendingRenameCount];
+                }
+                
+                s_pendingRenames[s_pendingRenameCount] = PendingRenameOperation{};
+                break;
+            }
+        }
+    }
+    SpinLock_Release(s_renameLock);
+
+    return isRename;
+}
+
 // Private functions
 KEXT_STATIC int HandleVnodeOperation(
     kauth_cred_t    credential,
@@ -247,6 +428,7 @@ KEXT_STATIC int HandleVnodeOperation(
     char procname[MAXCOMLEN + 1] = "";
     bool isDeleteAction = false;
     bool isDirectory = false;
+    bool isRename = true;
 
     {
         PerfSample considerVnodeSample(&perfTracer, PrjFSPerfCounter_VnodeOp_BasicVnodeChecks);
@@ -254,6 +436,15 @@ KEXT_STATIC int HandleVnodeOperation(
         {
             goto CleanupAndReturn;
         }
+    }
+
+    isDeleteAction = ActionBitIsSet(action, KAUTH_VNODE_DELETE);
+    if (isDeleteAction)
+    {
+        // This removes a matching entry from the array, so must run under the same
+        // conditions as the original RecordPendingRenameOperation call - hence early
+        // in the callback.
+        isRename = DeleteOpIsForRename(currentVnode);
     }
 
     if (!ShouldHandleVnodeOpEvent(
@@ -270,7 +461,6 @@ KEXT_STATIC int HandleVnodeOperation(
         goto CleanupAndReturn;
     }
     
-    isDeleteAction = ActionBitIsSet(action, KAUTH_VNODE_DELETE);
     isDirectory = vnode_isdir(currentVnode);
     
     if (isDirectory)
@@ -281,8 +471,8 @@ KEXT_STATIC int HandleVnodeOperation(
                 KAUTH_VNODE_SEARCH |
                 KAUTH_VNODE_READ_SECURITY |
                 KAUTH_VNODE_READ_ATTRIBUTES |
-                KAUTH_VNODE_READ_EXTATTRIBUTES |
-                KAUTH_VNODE_DELETE))
+                KAUTH_VNODE_READ_EXTATTRIBUTES) ||
+            (isDeleteAction && isRename))
         {
             // Recursively expand directory on delete to ensure child placeholders are created before rename operations
             if (isDeleteAction)
@@ -348,8 +538,8 @@ KEXT_STATIC int HandleVnodeOperation(
                 KAUTH_VNODE_READ_DATA |
                 KAUTH_VNODE_WRITE_DATA |
                 KAUTH_VNODE_EXECUTE |
-                KAUTH_VNODE_DELETE | // Hydrate on delete to ensure files are hydrated before rename operations
-                KAUTH_VNODE_APPEND_DATA))
+                KAUTH_VNODE_APPEND_DATA) ||
+            (isDeleteAction && isRename)) // Hydrate on delete to ensure files are hydrated before rename operations
         {
             if (FileFlagsBitIsSet(currentVnodeFileFlags, FileFlags_IsEmpty))
             {
@@ -763,6 +953,15 @@ KEXT_STATIC int HandleFileOpOperation(
                 &kauthError))
         {
             goto CleanupAndReturn;
+        }
+    }
+    else if (KAUTH_FILEOP_WILL_RENAME == action)
+    {
+        currentVnode = reinterpret_cast<vnode_t>(arg0);
+        if (VnodeIsEligibleForEventHandling(currentVnode))
+        {
+            // Records thread/vnode as rename() operation in progress, enabling optimisation in subsequent DELETE vnode listener handler
+            RecordPendingRenameOperation(currentVnode);
         }
     }
     
