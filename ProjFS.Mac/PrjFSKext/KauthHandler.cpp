@@ -434,7 +434,7 @@ KEXT_STATIC int HandleVnodeOperation(
     char procname[MAXCOMLEN + 1] = "";
     bool isDeleteAction = false;
     bool isDirectory = false;
-    bool isRename = true;
+    bool isRename = false;
 
     {
         PerfSample considerVnodeSample(&perfTracer, PrjFSPerfCounter_VnodeOp_BasicVnodeChecks);
@@ -471,17 +471,17 @@ KEXT_STATIC int HandleVnodeOperation(
     
     if (isDirectory)
     {
-        if (ActionBitIsSet(
+        if (isRename ||
+            ActionBitIsSet(
                 action,
                 KAUTH_VNODE_LIST_DIRECTORY |
                 KAUTH_VNODE_SEARCH |
                 KAUTH_VNODE_READ_SECURITY |
                 KAUTH_VNODE_READ_ATTRIBUTES |
-                KAUTH_VNODE_READ_EXTATTRIBUTES) ||
-            (isDeleteAction && isRename))
+                KAUTH_VNODE_READ_EXTATTRIBUTES))
         {
-            // Recursively expand directory on delete to ensure child placeholders are created before rename operations
-            if (isDeleteAction)
+            // Recursively expand directory on rename as user will expect the moved directory to have the same contents as in its original location
+            if (isRename)
             {
                 // Prevent system services from expanding directories as part of enumeration as this tends to cause deadlocks with the kauth listeners for Antivirus software
                 if (!TryGetVirtualizationRoot(&perfTracer, context, currentVnode, pid, CallbackPolicy_UserInitiatedOnly, &root, &vnodeFsidInode, &kauthResult, kauthError))
@@ -535,7 +535,8 @@ KEXT_STATIC int HandleVnodeOperation(
     }
     else
     {
-        if (ActionBitIsSet(
+        if (isRename || // Hydrate before a file is moved as the user will not expect an empty file at the new location
+            ActionBitIsSet(
                 action,
                 KAUTH_VNODE_READ_ATTRIBUTES |
                 KAUTH_VNODE_WRITE_ATTRIBUTES |
@@ -544,8 +545,7 @@ KEXT_STATIC int HandleVnodeOperation(
                 KAUTH_VNODE_READ_DATA |
                 KAUTH_VNODE_WRITE_DATA |
                 KAUTH_VNODE_EXECUTE |
-                KAUTH_VNODE_APPEND_DATA) ||
-            (isDeleteAction && isRename)) // Hydrate on delete to ensure files are hydrated before rename operations
+                KAUTH_VNODE_APPEND_DATA))
         {
             if (FileFlagsBitIsSet(currentVnodeFileFlags, FileFlags_IsEmpty))
             {
