@@ -983,9 +983,20 @@ static void TestForAllSupportedDarwinVersions(void(^testBlock)(void))
 }
 
 // When the first call to getVirtualizationRoot fails, ensure no more calls are made
-- (void) testDeleteDirectoryWhenFirstRequestFails {
+- (void) testRenameDirectoryWhenFirstRequestFails {
     ProviderMessageMock_SetDefaultRequestResult(false);
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
+
+    string renamedDirPath = self->dirPath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, /* idata, unused */
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
+        reinterpret_cast<uintptr_t>(self->dirPath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedDirPath.c_str()),
+        0); // unused
+
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,
         nullptr,
@@ -1025,17 +1036,30 @@ static void TestForAllSupportedDarwinVersions(void(^testBlock)(void))
     XCTAssertTrue(MockCalls::CallCount(ProviderMessaging_TrySendRequestAndWaitForResponse) == 2);
 }
 
-- (void) testDeleteDirectoryWithNoVirtualizationRoot {
+- (void) testRenameDirectoryWithNoVirtualizationRoot {
     [self removeAllVirtualizationRoots];
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
-    XCTAssertTrue(HandleVnodeOperation(
-        nullptr,
-        nullptr,
-        KAUTH_VNODE_DELETE,
-        reinterpret_cast<uintptr_t>(context),
-        reinterpret_cast<uintptr_t>(testDirVnode.get()),
-        0,
-        0) == KAUTH_RESULT_DEFER);
+ 
+    string renamedDirPath = self->dirPath + "_renamed";
+    HandleFileOpOperation(
+        nullptr, // credential
+        nullptr, // idata, unused
+        KAUTH_FILEOP_WILL_RENAME,
+        reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
+        reinterpret_cast<uintptr_t>(self->dirPath.c_str()),
+        reinterpret_cast<uintptr_t>(renamedDirPath.c_str()),
+        0); // unused
+
+    XCTAssertEqual(
+        KAUTH_RESULT_DEFER,
+        HandleVnodeOperation(
+            nullptr,
+            nullptr,
+            KAUTH_VNODE_DELETE,
+            reinterpret_cast<uintptr_t>(context),
+            reinterpret_cast<uintptr_t>(testDirVnode.get()),
+            0,
+            0));
 
     XCTAssertFalse(MockCalls::DidCallFunction(ProviderMessaging_TrySendRequestAndWaitForResponse));
 }
