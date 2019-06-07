@@ -227,45 +227,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     MockCalls::Clear();
     CleanupPendingRenames();
     version_major = PrjFSDarwinMajorVersion::MacOS10_14_Mojave;
-}
 
-- (void) testRenamingEmptyFileHydrates
-{
-    testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
-    SetPrjFSFileXattrData(testFileVnode);
-    
-    string renamedFilePath = filePath + "_renamed";
-    HandleFileOpOperation(
-        nullptr, // credential
-        nullptr, /* idata, unused */
-        KAUTH_FILEOP_WILL_RENAME,
-        reinterpret_cast<uintptr_t>(testFileVnode.get()),
-        reinterpret_cast<uintptr_t>(filePath.c_str()),
-        reinterpret_cast<uintptr_t>(renamedFilePath.c_str()),
-        0); // unused
-    
-    XCTAssertTrue(HandleVnodeOperation(
-        nullptr,
-        nullptr,
-        KAUTH_VNODE_DELETE,
-        reinterpret_cast<uintptr_t>(context),
-        reinterpret_cast<uintptr_t>(testFileVnode.get()),
-        0,
-        0) == KAUTH_RESULT_DEFER);
-    XCTAssertTrue(
-        MockCalls::DidCallFunction(
-            ProviderMessaging_TrySendRequestAndWaitForResponse,
-            _,
-            MessageType_KtoU_HydrateFile,
-            testFileVnode.get(),
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            nullptr));
-    MockCalls::Clear();
 }
 
 - (void) testVnodeAccessCausesNoEvent {
