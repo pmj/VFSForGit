@@ -28,6 +28,12 @@
 #include "KauthHandlerTestable.hpp"
 #endif
 
+template <typename T, typename MIN_T, typename MAX_T>
+    auto clamp(const T& value, const MIN_T& min, const MAX_T& max)
+{
+    return value < min ? min : (value > max ? max : value);
+}
+
 enum ProviderCallbackPolicy
 {
     CallbackPolicy_AllowAny,
@@ -342,7 +348,7 @@ KEXT_STATIC void RecordPendingRenameOperation(vnode_t vnode)
 
                 resizeTable = true;
                 
-                resizeTableLength = MAX(1u, MIN(UINT32_MAX, s_maxPendingRenames * UINT64_C(2)));
+                resizeTableLength = static_cast<uint32_t>(clamp(s_maxPendingRenames * UINT64_C(2), 1u, UINT32_MAX));
                 assert(resizeTableLength > s_maxPendingRenames);
             }
         }
