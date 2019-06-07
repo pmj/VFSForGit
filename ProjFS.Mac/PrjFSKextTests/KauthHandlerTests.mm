@@ -393,8 +393,8 @@ using std::string;
     MockProcess_SetCurrentThreadIndex(1);
     XCTAssertTrue(DeleteOpIsForRename(testFile2.get()));
     MockProcess_SetCurrentThreadIndex(0);
-    CleanupPendingRenames();
     XCTAssertEqual(s_pendingRenameCount, 0);
+    CleanupPendingRenames();
 }
 
 @end

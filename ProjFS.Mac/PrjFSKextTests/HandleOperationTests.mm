@@ -1020,7 +1020,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     XCTAssertTrue(MockCalls::CallCount(ProviderMessaging_TrySendRequestAndWaitForResponse) == 1);
 }
 
-- (void) testDeleteDirectoryWhenSecondRequestFails {
+- (void) testDeleteDirectoryForRenameWhenSecondRequestFails {
     ProviderMessageMock_SetSecondRequestResult(false);
     
     // Hydration on delete only occurs if deletion is caused by rename
