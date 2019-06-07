@@ -25,7 +25,7 @@ using std::string;
 using KextMock::_;
 
 // Darwin version of running kernel
-int version_major = 18;
+int version_major = PrjFSDarwinMajorVersion::MacOS10_14_Mojave;
 
 class PrjFSProviderUserClient
 {
@@ -201,7 +201,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     CleanupPendingRenames();
     
     // On High Sierra, delete causes hydration:
-    version_major = 17;
+    version_major = PrjFSDarwinMajorVersion::MacOS10_13_HighSierra;
     InitPendingRenames();
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,
@@ -226,7 +226,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
             nullptr));
     MockCalls::Clear();
     CleanupPendingRenames();
-    version_major = 18;
+    version_major = PrjFSDarwinMajorVersion::MacOS10_14_Mojave;
 }
 
 - (void) testRenamingEmptyFileHydrates

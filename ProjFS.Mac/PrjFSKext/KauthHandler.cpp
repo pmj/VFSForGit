@@ -243,7 +243,7 @@ KEXT_STATIC void UseMainForkIfNamedStream(
 
 KEXT_STATIC bool InitPendingRenames()
 {
-    if (version_major >= 18) // Only need to track renames on Mojave and newer
+    if (version_major >= PrjFSDarwinMajorVersion::MacOS10_14_Mojave) // Only need to track renames on Mojave and newer
     {
         s_renameLock = SpinLock_Alloc();
         s_maxPendingRenames = 8; // Arbitrary choice, should be maximum number of expected concurrent threads performing renames, but array will resize on demand
@@ -262,7 +262,7 @@ KEXT_STATIC bool InitPendingRenames()
 
 KEXT_STATIC void CleanupPendingRenames()
 {
-    if (version_major >= 18)
+    if (version_major >= PrjFSDarwinMajorVersion::MacOS10_14_Mojave)
     {
         if (SpinLock_IsValid(s_renameLock))
         {
@@ -316,7 +316,7 @@ KEXT_STATIC void ResizePendingRenames(uint32_t newMaxPendingRenames)
 
 KEXT_STATIC void RecordPendingRenameOperation(vnode_t vnode)
 {
-    assertf(version_major >= 18, "This function should only be called from the KAUTH_FILEOP_WILL_RENAME handler, which is only supported by Darwin 18 and newer (version_major = %u)", version_major);
+    assertf(version_major >= PrjFSDarwinMajorVersion::MacOS10_14_Mojave, "This function should only be called from the KAUTH_FILEOP_WILL_RENAME handler, which is only supported by Darwin 18 (macOS 10.14 Mojave) and newer (version_major = %u)", version_major);
     thread_t myThread = current_thread();
     
     bool resizeTable;
@@ -361,7 +361,7 @@ KEXT_STATIC void RecordPendingRenameOperation(vnode_t vnode)
 
 KEXT_STATIC bool DeleteOpIsForRename(vnode_t vnode)
 {
-    if (version_major < 18)
+    if (version_major < PrjFSDarwinMajorVersion::MacOS10_14_Mojave)
     {
         // High Sierra and earlier do not support WILL_RENAME notification, so we have to assume any delete may be caused by a rename
         assert(s_pendingRenameCount == 0);
