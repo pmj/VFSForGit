@@ -992,15 +992,6 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
             ActiveProvider_Disconnect(self->dummyRepoHandle, &self->dummyClient);
         });
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
-    string renameFilePath = self->filePath + "_renamed";
-    HandleFileOpOperation(
-        nullptr, // credential
-        nullptr, /* idata, unused */
-        KAUTH_FILEOP_WILL_RENAME,
-        reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
-        reinterpret_cast<uintptr_t>(self->filePath.c_str()),
-        reinterpret_cast<uintptr_t>(renameFilePath.c_str()),
-        0); // unused
     XCTAssertTrue(HandleVnodeOperation(
         nullptr,
         nullptr,
