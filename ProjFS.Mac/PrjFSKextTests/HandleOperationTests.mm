@@ -39,6 +39,22 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     vnode->xattrs.insert(make_pair(PrjFSFileXAttrName, rootXattrData));
 }
 
+static void TestForDarwinVersionRange(int versionMin, int versionMax, void(^testBlock)(void))
+{
+    const int savedVersion = version_major;
+    for (int version = versionMin; version <= versionMax; ++version)
+    {
+        version_major = version;
+        testBlock();
+    }
+    version_major = savedVersion;
+}
+
+static void TestForAllSupportedDarwinVersions(void(^testBlock)(void))
+{
+    TestForDarwinVersionRange(PrjFSDarwinMajorVersion::MacOS10_13_HighSierra, PrjFSDarwinMajorVersion::MacOS10_15_Catalina, testBlock);
+}
+
 @interface HandleVnodeOperationTests : PFSKextTestCase
 @end
 
@@ -106,6 +122,7 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     cacheWrapper.FreeCache();
     
     VirtualizationRoots_Cleanup();
+    CleanupPendingRenames();
     vfs_context_rele(context);
     MockVnodes_CheckAndClear();
     MockCalls::Clear();
@@ -174,60 +191,46 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
     testFileVnode->attrValues.va_flags = FileFlags_IsEmpty | FileFlags_IsInVirtualizationRoot;
     SetPrjFSFileXattrData(testFileVnode);
     
-    // On Mojave, no hydration:
-    InitPendingRenames();
-    XCTAssertTrue(HandleVnodeOperation(
-        nullptr,
-        nullptr,
-        KAUTH_VNODE_DELETE,
-        reinterpret_cast<uintptr_t>(context),
-        reinterpret_cast<uintptr_t>(testFileVnode.get()),
-        0,
-        0) == KAUTH_RESULT_DEFER);
-    XCTAssertFalse(
-        MockCalls::DidCallFunction(
-            ProviderMessaging_TrySendRequestAndWaitForResponse,
-            _,
-            MessageType_KtoU_HydrateFile,
-            testFileVnode.get(),
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            nullptr));
-    MockCalls::Clear();
-    CleanupPendingRenames();
-    
-    // On High Sierra, delete causes hydration:
-    version_major = PrjFSDarwinMajorVersion::MacOS10_13_HighSierra;
-    InitPendingRenames();
-    XCTAssertTrue(HandleVnodeOperation(
-        nullptr,
-        nullptr,
-        KAUTH_VNODE_DELETE,
-        reinterpret_cast<uintptr_t>(context),
-        reinterpret_cast<uintptr_t>(testFileVnode.get()),
-        0,
-        0) == KAUTH_RESULT_DEFER);
-    XCTAssertTrue(
-        MockCalls::DidCallFunction(
-            ProviderMessaging_TrySendRequestAndWaitForResponse,
-            _,
-            MessageType_KtoU_HydrateFile,
-            testFileVnode.get(),
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            nullptr));
-    MockCalls::Clear();
-    CleanupPendingRenames();
-    version_major = PrjFSDarwinMajorVersion::MacOS10_14_Mojave;
+    TestForAllSupportedDarwinVersions(^{
+        InitPendingRenames();
+        XCTAssertEqual(
+            KAUTH_RESULT_DEFER,
+            HandleVnodeOperation(
+                nullptr,
+                nullptr,
+                KAUTH_VNODE_DELETE,
+                reinterpret_cast<uintptr_t>(self->context),
+                reinterpret_cast<uintptr_t>(self->testFileVnode.get()),
+                0,
+                0));
+        bool didHydrate =
+            MockCalls::DidCallFunction(
+                ProviderMessaging_TrySendRequestAndWaitForResponse,
+                _,
+                MessageType_KtoU_HydrateFile,
+                self->testFileVnode.get(),
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                nullptr);
 
+        // On High Sierra, any delete causes hydration as it might be due to a rename:
+        if (version_major <= PrjFSDarwinMajorVersion::MacOS10_13_HighSierra)
+        {
+            XCTAssertTrue(didHydrate);
+        }
+        else
+        {
+            // On Mojave+, no hydration on non-rename delete:
+            XCTAssertFalse(didHydrate);
+        }
+        
+        MockCalls::Clear();
+        CleanupPendingRenames();
+    });
 }
 
 - (void) testVnodeAccessCausesNoEvent {
@@ -640,40 +643,53 @@ static void SetPrjFSFileXattrData(const shared_ptr<vnode>& vnode)
 - (void) testDeleteDirNonRenamed
 {
     testDirVnode->attrValues.va_flags = FileFlags_IsInVirtualizationRoot;
-    XCTAssertTrue(HandleVnodeOperation(
-        nullptr,
-        nullptr,
-        KAUTH_VNODE_DELETE,
-        reinterpret_cast<uintptr_t>(context),
-        reinterpret_cast<uintptr_t>(testDirVnode.get()),
-        0,
-        0) == KAUTH_RESULT_DEFER);
-    XCTAssertTrue(MockCalls::DidCallFunction(
-        ProviderMessaging_TrySendRequestAndWaitForResponse,
-        _,
-        MessageType_KtoU_NotifyDirectoryPreDelete,
-        testDirVnode.get(),
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        nullptr));
 
-    // Should not hydrate if delete is not caused by rename
-    XCTAssertFalse(MockCalls::DidCallFunction(
-        ProviderMessaging_TrySendRequestAndWaitForResponse,
-        _,
-        MessageType_KtoU_RecursivelyEnumerateDirectory,
-        testDirVnode.get(),
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        nullptr));
+    TestForAllSupportedDarwinVersions(^{
+        XCTAssertTrue(HandleVnodeOperation(
+            nullptr,
+            nullptr,
+            KAUTH_VNODE_DELETE,
+            reinterpret_cast<uintptr_t>(self->context),
+            reinterpret_cast<uintptr_t>(self->testDirVnode.get()),
+            0,
+            0) == KAUTH_RESULT_DEFER);
+        XCTAssertTrue(MockCalls::DidCallFunction(
+            ProviderMessaging_TrySendRequestAndWaitForResponse,
+            _,
+            MessageType_KtoU_NotifyDirectoryPreDelete,
+            self->testDirVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr));
+
+        // Should not enumerate if delete is not caused by rename, except on High Sierra
+        bool didEnumerate = MockCalls::DidCallFunction(
+            ProviderMessaging_TrySendRequestAndWaitForResponse,
+            _,
+            MessageType_KtoU_RecursivelyEnumerateDirectory,
+            self->testDirVnode.get(),
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            nullptr);
+        if (version_major <= PrjFSDarwinMajorVersion::MacOS10_13_HighSierra)
+        {
+            XCTAssertTrue(didEnumerate);
+        }
+        else
+        {
+            XCTAssertFalse(didEnumerate);
+        }
+        
+        MockCalls::Clear();
+    });
 }
 
 - (void) testEmptyDirectoryEnumerates {
