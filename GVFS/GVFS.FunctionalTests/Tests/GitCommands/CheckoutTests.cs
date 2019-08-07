@@ -16,6 +16,8 @@ namespace GVFS.FunctionalTests.Tests.GitCommands
     [Category(Categories.GitCommands)]
     public class CheckoutTests : GitRepoTests
     {
+        private const string PrjFSLibPath = "libPrjFSLib.dylib";
+
         public CheckoutTests(Settings.ValidateWorkingTreeMode validateWorkingTree)
             : base(enlistmentPerTest: true, validateWorkingTree: validateWorkingTree)
         {
@@ -498,6 +500,12 @@ namespace GVFS.FunctionalTests.Tests.GitCommands
         [TestCase]
         public void CheckoutBranchWithOpenHandleBlockingProjectionDeleteAndRepoMetdataUpdate()
         {
+            bool unregisterOfflineIO = false;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                unregisterOfflineIO = 0 == RegisterForOfflineIO();
+            }
+
             this.ControlGitRepo.Fetch(GitRepoTests.ConflictSourceBranch);
             this.ControlGitRepo.Fetch(GitRepoTests.ConflictTargetBranch);
 
@@ -547,6 +555,13 @@ namespace GVFS.FunctionalTests.Tests.GitCommands
                 // If the test fails, we should wait for the Task to complete so that it does not keep a handle open
                 task.Wait();
                 throw;
+            }
+            finally
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && unregisterOfflineIO)
+                {
+                    UnregisterForOfflineIO();
+                }
             }
         }
 
@@ -956,5 +971,11 @@ namespace GVFS.FunctionalTests.Tests.GitCommands
             [MarshalAs(UnmanagedType.U4)] FileMode creationDisposition,
             [MarshalAs(UnmanagedType.U4)] NativeFileAttributes flagsAndAttributes,
             [In] IntPtr templateFile);
+
+        [DllImport(PrjFSLibPath, EntryPoint = "PrjFS_RegisterForOfflineIO")]
+        private static extern uint RegisterForOfflineIO();
+
+        [DllImport(PrjFSLibPath, EntryPoint = "PrjFS_UnregisterForOfflineIO")]
+        private static extern uint UnregisterForOfflineIO();
     }
 }
