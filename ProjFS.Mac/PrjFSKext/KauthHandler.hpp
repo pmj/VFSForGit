@@ -6,5 +6,6 @@
 
 kern_return_t KauthHandler_Init();
 kern_return_t KauthHandler_Cleanup();
+bool KauthHandler_EnableTraceListeners(bool vnodeTraceEnabled, bool fileopTraceEnabled);
 
 #endif /* KauthHandler_h */
