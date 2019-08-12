@@ -14,6 +14,8 @@
 // Name of property on the main PrjFS IOService indicating the kext version, to be checked by user space
 #define PrjFSKextVersionKey "org.vfsforgit.PrjFSKext.Version"
 
+#define PrjFSEventTracingKey "org.vfsforgit.PrjFSKext.EventTracing"
+
 #define PrjFSProviderPathKey "org.vfsforgit.PrjFSKext.ProviderUserClient.Path"
 
 typedef enum

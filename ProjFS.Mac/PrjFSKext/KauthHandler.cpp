@@ -105,7 +105,8 @@ class KextLogTracer
     uint32_t dynamicTraceBufferSize;
     uint32_t traceBufferPosition;
     uint64_t traceIndex;
-    
+
+public:
     static RWLock traceFilterLock;
     static _Atomic(char*) pathPrefixFilter;
     static _Atomic(kauth_action_t) traceVnodeActionFilterMask;
@@ -114,7 +115,7 @@ class KextLogTracer
     static _Atomic(bool) traceAllFileOpEvents;
     static _Atomic(bool) traceAllVnodeEvents;
     static _Atomic(uint64_t) nextTraceIndex;
-
+private:
 
     KextLogTracer() = delete;
     KextLogTracer(const NullTracer&) = delete;
@@ -506,6 +507,8 @@ kern_return_t KauthHandler_Init()
         goto CleanupAndFail;
     }
 
+    KextLogTracer::traceFilterLock = RWLock_Alloc();
+
     s_vnodeListener = kauth_listen_scope(KAUTH_SCOPE_VNODE, HandleVnodeOperationImpl<NullTracer>, nullptr);
     if (nullptr == s_vnodeListener)
     {
@@ -553,6 +556,8 @@ kern_return_t KauthHandler_Cleanup()
     ProviderMessaging_AbortAllOutstandingEvents();
     
     WaitForListenerCompletion();
+
+    RWLock_FreeMemory(&KextLogTracer::traceFilterLock);
 
     CleanupPendingRenames();
     
@@ -2011,6 +2016,18 @@ KEXT_STATIC bool ShouldIgnoreVnodeType(vtype vnodeType, vnode_t vnode)
 
 bool KauthHandler_EnableTraceListeners(bool vnodeTraceEnabled, bool fileopTraceEnabled)
 {
+    if (vnodeTraceEnabled)
+    {
+        // TODO
+        atomic_store(&KextLogTracer::pathPrefixFilter, const_cast<char*>("/Users/test/"));
+        atomic_store(&KextLogTracer::traceVnodeActionFilterMask, ~0);
+        atomic_store(&KextLogTracer::traceDeniedVnodeEvents, true);
+        atomic_store(&KextLogTracer::traceProviderMessagingEvents, true);
+        atomic_store(&KextLogTracer::traceAllVnodeEvents, false);
+    }
+    
+    atomic_store(&KextLogTracer::traceAllFileOpEvents, fileopTraceEnabled);
+
     kauth_scope_callback_t vnodeListener = vnodeTraceEnabled ? HandleVnodeOperationImpl<KextLogTracer> : HandleVnodeOperationImpl<NullTracer>;
     kauth_listener_t newListenerHandle = kauth_listen_scope(KAUTH_SCOPE_VNODE, vnodeListener, nullptr);
     if (newListenerHandle == nullptr)

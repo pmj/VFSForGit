@@ -97,6 +97,7 @@ while read line; do
 	 [[ $line != *"ProviderMessaging_"* ]] && 
 	 [[ $line != *"RWLock_DropExclusiveToShared"* ]] &&
 	 [[ $line != *"MessageTypeString"* ]] &&
+	 [[ $line != *"KauthHandler_EnableTraceListeners"* ]] &&
 	 [[ $line != *"NullTracer::"* ]] &&
 	 [[ $line != *"KextLogTracer::"* ]] &&
       # Not going down the "unexpected" code path in isKextAssertionFailureExpected, Assert & panic is good!

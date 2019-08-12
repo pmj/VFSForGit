@@ -6,6 +6,7 @@
 #include "PrjFSOfflineIOUserClient.hpp"
 #include "KextLog.hpp"
 #include "VirtualizationRoots.hpp"
+#include "KauthHandler.hpp"
 
 #include <IOKit/IOLib.h>
 #include <kern/assert.h>
@@ -138,4 +139,24 @@ IOReturn PrjFSService::newUserClient(
     }
 
     return result;
+}
+
+IOReturn PrjFSService::setProperties(OSObject* properties)
+{
+    OSDictionary* propertiesDict = OSDynamicCast(OSDictionary, properties);
+    if (propertiesDict != nullptr)
+    {
+        bool eventTracingEnabled = false;
+        OSObject* traceProperty = propertiesDict->getObject(PrjFSEventTracingKey);
+        if (traceProperty != nullptr)
+        {
+            if (traceProperty == kOSBooleanTrue)
+                eventTracingEnabled = true;
+        }
+        
+        // TODO: make all of this actually configurable
+        KauthHandler_EnableTraceListeners(eventTracingEnabled, eventTracingEnabled);
+    }
+    
+    return kIOReturnSuccess;
 }
