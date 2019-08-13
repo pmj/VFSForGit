@@ -12,7 +12,7 @@ static CFTypeRef GenerateEventTracingSettings(int argc, char* argv[])
     int tracingEnabled = 0, tracingDisabled = 0;
     bool useVnodeActionFilter = false;
     uint32_t vnodeActionFilter = UINT32_MAX;
-    int traceAllVnodeEvents = 0, traceDeniedVnodeEvents = 1, traceProviderMessagingEvents = 0;
+    int traceAllVnodeEvents = 0, traceDeniedVnodeEvents = 0, traceProviderMessagingEvents = 0;
     int traceAllFileopEvents = 0;
 
     int ch;
