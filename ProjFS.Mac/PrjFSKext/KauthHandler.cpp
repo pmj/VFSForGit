@@ -2036,21 +2036,38 @@ KEXT_STATIC bool ShouldIgnoreVnodeType(vtype vnodeType, vnode_t vnode)
     return false;
 }
 
-bool KauthHandler_EnableTraceListeners(bool vnodeTraceEnabled, bool fileopTraceEnabled)
+bool KauthHandler_EnableTraceListeners(bool tracingEnabled, const KauthHandlerEventTracingSettings& settings)
 {
-    if (vnodeTraceEnabled)
+    if (tracingEnabled)
     {
-        // TODO
-        atomic_store(&KextLogTracer::pathPrefixFilter, const_cast<char*>("/Users/test/"));
-        atomic_store(&KextLogTracer::traceVnodeActionFilterMask, ~0);
-        atomic_store(&KextLogTracer::traceDeniedVnodeEvents, true);
-        atomic_store(&KextLogTracer::traceProviderMessagingEvents, true);
-        atomic_store(&KextLogTracer::traceAllVnodeEvents, false);
+        RWLock_AcquireExclusive(KextLogTracer::traceFilterLock);
+        {
+            char* newPrefixFilter = nullptr;
+            if (settings.pathPrefixFilter != nullptr)
+            {
+                size_t filterLength = strlen(settings.pathPrefixFilter);
+                if (filterLength + 1 <= UINT32_MAX)
+                {
+                    newPrefixFilter = static_cast<char*>(Memory_Alloc(static_cast<uint32_t>(filterLength + 1)));
+                    memcpy(newPrefixFilter, settings.pathPrefixFilter, filterLength + 1);
+                }
+            }
+            
+            char* oldPrefixFilter = atomic_exchange(&KextLogTracer::pathPrefixFilter, newPrefixFilter);
+            
+            if (oldPrefixFilter != nullptr)
+            {
+                Memory_Free(oldPrefixFilter, static_cast<uint32_t>(strlen(oldPrefixFilter) + 1));
+            }
+            atomic_store(&KextLogTracer::traceVnodeActionFilterMask, settings.vnodeActionFilterMask);
+            atomic_store(&KextLogTracer::traceDeniedVnodeEvents, settings.traceDeniedVnodeEvents);
+            atomic_store(&KextLogTracer::traceProviderMessagingEvents, settings.traceProviderMessagingVnodeEvents);
+            atomic_store(&KextLogTracer::traceAllVnodeEvents, settings.traceAllVnodeEvents);
+        }
+        RWLock_ReleaseExclusive(KextLogTracer::traceFilterLock);
     }
     
-    atomic_store(&KextLogTracer::traceAllFileOpEvents, fileopTraceEnabled);
-
-    kauth_scope_callback_t vnodeListener = vnodeTraceEnabled ? HandleVnodeOperationImpl<KextLogTracer> : HandleVnodeOperationImpl<NullTracer>;
+    kauth_scope_callback_t vnodeListener = tracingEnabled ? HandleVnodeOperationImpl<KextLogTracer> : HandleVnodeOperationImpl<NullTracer>;
     kauth_listener_t newListenerHandle = kauth_listen_scope(KAUTH_SCOPE_VNODE, vnodeListener, nullptr);
     if (newListenerHandle == nullptr)
     {
@@ -2060,7 +2077,7 @@ bool KauthHandler_EnableTraceListeners(bool vnodeTraceEnabled, bool fileopTraceE
     kauth_unlisten_scope(s_vnodeListener);
     s_vnodeListener = newListenerHandle;
     
-    KextLog_Info("KauthHandler_EnableTraceListeners: Now running with vnodeTraceEnabled = %s", vnodeTraceEnabled ? "YES" : "NO");
+    KextLog_Info("KauthHandler_EnableTraceListeners: Now running with tracing %s", tracingEnabled ? "ENABLED" : "DISABLED");
     
     return true;
 }

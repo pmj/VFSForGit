@@ -147,15 +147,48 @@ IOReturn PrjFSService::setProperties(OSObject* properties)
     if (propertiesDict != nullptr)
     {
         bool eventTracingEnabled = false;
+        KauthHandlerEventTracingSettings settings = { .vnodeActionFilterMask = ~0 };
         OSObject* traceProperty = propertiesDict->getObject(PrjFSEventTracingKey);
         if (traceProperty != nullptr)
         {
-            if (traceProperty == kOSBooleanTrue)
+            OSDictionary* traceSettingDictionary = OSDynamicCast(OSDictionary, traceProperty);
+            if (traceSettingDictionary != nullptr)
+            {
                 eventTracingEnabled = true;
+
+                OSBoolean* allVnodeEvents = OSDynamicCast(OSBoolean, traceSettingDictionary->getObject("vnode-events-all"));
+                if (allVnodeEvents != nullptr)
+                {
+                    settings.traceAllVnodeEvents = allVnodeEvents->getValue();
+                }
+                
+                OSBoolean* deniedVnodeEvents = OSDynamicCast(OSBoolean, traceSettingDictionary->getObject("vnode-events-denied"));
+                if (deniedVnodeEvents != nullptr)
+                {
+                    settings.traceDeniedVnodeEvents = deniedVnodeEvents->getValue();
+                }
+
+                OSBoolean* messagingVnodeEvents = OSDynamicCast(OSBoolean, traceSettingDictionary->getObject("vnode-message-events"));
+                if (messagingVnodeEvents != nullptr)
+                {
+                    settings.traceProviderMessagingVnodeEvents = messagingVnodeEvents->getValue();
+                }
+                
+                OSString* pathFilter = OSDynamicCast(OSString, traceSettingDictionary->getObject("path-filter"));
+                if (pathFilter != nullptr)
+                {
+                    settings.pathPrefixFilter = pathFilter->getCStringNoCopy();
+                }
+                
+                OSNumber* vnodeActionFilter = OSDynamicCast(OSNumber, traceSettingDictionary->getObject("vnode-action-filter-mask"));
+                if (vnodeActionFilter != nullptr)
+                {
+                    settings.vnodeActionFilterMask = vnodeActionFilter->unsigned32BitValue();
+                }
+            }
         }
         
-        // TODO: make all of this actually configurable
-        KauthHandler_EnableTraceListeners(eventTracingEnabled, eventTracingEnabled);
+        KauthHandler_EnableTraceListeners(eventTracingEnabled, settings);
     }
     
     return kIOReturnSuccess;
