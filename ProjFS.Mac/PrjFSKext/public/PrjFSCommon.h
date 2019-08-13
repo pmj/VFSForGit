@@ -47,6 +47,8 @@ enum PrjFSServiceUserClientType
 #define KEXT_STATIC_INLINE static inline
 #endif
 
+#ifdef __cplusplus
+
 namespace PrjFSDarwinMajorVersion
 {
     enum
@@ -56,5 +58,7 @@ namespace PrjFSDarwinMajorVersion
         MacOS10_15_Catalina = 19,
     };
 }
+
+#endif
 
 #endif /* PrjFSCommon_h */
