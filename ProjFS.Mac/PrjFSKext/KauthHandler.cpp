@@ -265,7 +265,12 @@ public:
                 }
                 else
                 {
-                    this->Printf("File vnode '%s' event action" KextLog_DirectoryVnodeActionFormat , vnodePath, KextLog_DirectoryVnodeActionArgs(vnodeAction, " "));
+                    this->Printf(
+                        "File vnode '%s' event by process '%s' (PID = %d) action" KextLog_FileVnodeActionFormat "\n",
+                        vnodePath,
+                        processName,
+                        pid,
+                        KextLog_FileVnodeActionArgs(vnodeAction, " "));
                 }
 
                 if (this->traceAllVnodeEvents)
