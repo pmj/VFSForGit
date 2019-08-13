@@ -69,6 +69,9 @@ public:
     {}
     void SendProviderMessageResult(bool success)
     {}
+    
+    void SetDeniedForCrawler()
+    {}
 
     void SetVnodeOpResult(int result)
     {
@@ -303,6 +306,18 @@ public:
         if (!this->discarded)
         {
             this->Printf(" -> result: %s", success ? "success" : "failed");
+        }
+    }
+
+    void SetDeniedForCrawler()
+    {
+        if (!this->willEmitTrace && !this->discarded)
+        {
+            if (!atomic_load(&KextLogTracer::traceAllVnodeEvents) && atomic_load(&KextLogTracer::traceDeniedVnodeEvents))
+            {
+                // When tracing only denied events, throw out any denied crawlers as they tend to spam the trace
+                this->discarded = true;
+            }
         }
     }
 
@@ -846,6 +861,10 @@ int HandleVnodeOperationImpl(
             &kauthResult,
             kauthError))
     {
+        if (kauthResult == KAUTH_RESULT_DENY && *kauthError != EBADF)
+        {
+            eventTracer.SetDeniedForCrawler();
+        }
         goto CleanupAndReturn;
     }
     
