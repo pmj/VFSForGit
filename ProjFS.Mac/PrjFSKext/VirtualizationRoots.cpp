@@ -1,5 +1,6 @@
 #include <kern/debug.h>
 #include <kern/assert.h>
+#include <sys/proc.h>
 
 #include "public/PrjFSCommon.h"
 #include "public/PrjFSXattrs.h"
@@ -664,14 +665,32 @@ bool VirtualizationRoots_ProcessMayAccessOfflineRoots(pid_t pid)
     
     RWLock_AcquireShared(s_virtualizationRootsLock);
     {
-        for (uint32_t i = 0; i < s_offlineIOPIDCount; ++i)
+        while (true)
         {
-            if (s_offlineIOPIDs[i] == pid)
+            for (uint32_t i = 0; i < s_offlineIOPIDCount; ++i)
             {
-                result = true;
+                if (s_offlineIOPIDs[i] == pid)
+                {
+                    result = true;
+                    goto done;
+                }
+            }
+
+            proc_t process = proc_find(pid);
+            if (process == nullptr)
+            {
+                break;
+            }
+            
+            pid = proc_ppid(process);
+            proc_rele(process);
+            
+            if (pid <= 1)
+            {
                 break;
             }
         }
+        done: {}
     }
     RWLock_ReleaseShared(s_virtualizationRootsLock);
 
