@@ -8,11 +8,10 @@
 static CFTypeRef GenerateEventTracingSettings(int argc, char* argv[])
 {
     CFStringRef pathFilterString = NULL;
-    int tracingEnabled = 0, tracingDisabled = 0;
+/*    int tracingEnabled = 0, tracingDisabled = 0;
 
     int ch;
 
-    /* options descriptor */
     static struct option longopts[] = {
          { "enable",              no_argument,            &tracingEnabled,  1 },
          { "enable",              no_argument,            &tracingDisabled, 1 },
@@ -50,7 +49,7 @@ static CFTypeRef GenerateEventTracingSettings(int argc, char* argv[])
     }
     argc -= optind;
     argv += optind;
-    
+    */
 CleanupAndFail:
     if (pathFilterString != NULL)
     {
