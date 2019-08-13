@@ -24,6 +24,7 @@
 			buildPhases = (
 			);
 			dependencies = (
+				4AF558452302DF510020A270 /* PBXTargetDependency */,
 				4A08257521E77BEB00E21AFD /* PBXTargetDependency */,
 				4391F90521E4362B0008103C /* PBXTargetDependency */,
 				4391F90721E4362B0008103C /* PBXTargetDependency */,
@@ -106,6 +107,8 @@
 		4A8C13A621F2418400002878 /* libPrjFSKextTestable.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A8C13A021F23EE800002878 /* libPrjFSKextTestable.a */; };
 		4AAE3FCA22832340002673FA /* HandleFileOpOperationTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4AAE3FC922832340002673FA /* HandleFileOpOperationTests.mm */; };
 		4AF5583D2301BE290020A270 /* prjfs-tracectl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4AF5583C2301BE290020A270 /* prjfs-tracectl.cpp */; };
+		4AF558422302DEB30020A270 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4391F8DC21E430EB0008103C /* IOKit.framework */; };
+		4AF558432302DEBE0020A270 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4391F8DA21E430E20008103C /* CoreFoundation.framework */; };
 		D9C087F222384670009C1110 /* MemoryTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = D9C087F122384670009C1110 /* MemoryTests.mm */; };
 		F554202D224BB6E5008BAE95 /* ProviderMessagingMock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F554202C224BB6E5008BAE95 /* ProviderMessagingMock.cpp */; };
 		F5554F422239883B00B31D19 /* MockProc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F5554F412239883B00B31D19 /* MockProc.cpp */; };
@@ -205,6 +208,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 4A8C139F21F23EE800002878;
 			remoteInfo = PrjFSKextTestable;
+		};
+		4AF558442302DF510020A270 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4391F87621E4278C0008103C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4AF558392301BE280020A270;
+			remoteInfo = "prjfs-tracectl";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -391,6 +401,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4AF558432302DEBE0020A270 /* CoreFoundation.framework in Frameworks */,
+				4AF558422302DEB30020A270 /* IOKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1079,6 +1091,11 @@
 			isa = PBXTargetDependency;
 			target = 4A8C139F21F23EE800002878 /* PrjFSKextTestable */;
 			targetProxy = 4A8C13A721F241ED00002878 /* PBXContainerItemProxy */;
+		};
+		4AF558452302DF510020A270 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4AF558392301BE280020A270 /* prjfs-tracectl */;
+			targetProxy = 4AF558442302DF510020A270 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
