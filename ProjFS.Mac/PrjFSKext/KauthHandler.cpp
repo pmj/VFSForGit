@@ -802,8 +802,6 @@ int HandleVnodeOperationImpl(
 
     EventTracer eventTracer(action, currentVnode);
 
-    KextLog_VnodeOp(currentVnode, vnode_vtype(currentVnode), "", action, "");
-
     UseMainForkIfNamedStream(currentVnode, putVnodeWhenDone);
 
     VirtualizationRootHandle root = RootHandle_None;
@@ -2037,5 +2035,8 @@ bool KauthHandler_EnableTraceListeners(bool vnodeTraceEnabled, bool fileopTraceE
     
     kauth_unlisten_scope(s_vnodeListener);
     s_vnodeListener = newListenerHandle;
+    
+    KextLog_Info("KauthHandler_EnableTraceListeners: Now running with vnodeTraceEnabled = %s", vnodeTraceEnabled ? "YES" : "NO");
+    
     return true;
 }
