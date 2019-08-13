@@ -257,7 +257,7 @@ public:
                 if (vnode_isdir(vnode))
                 {
                     this->Printf(
-                        "Directory vnode '%s' event by process '%s' (PID = %d) action" KextLog_DirectoryVnodeActionFormat "\n",
+                        "Directory vnode '%s' event by process '%s' (PID = %d) action" KextLog_DirectoryVnodeActionFormat,
                         vnodePath,
                         processName,
                         pid,
@@ -266,7 +266,7 @@ public:
                 else
                 {
                     this->Printf(
-                        "File vnode '%s' event by process '%s' (PID = %d) action" KextLog_FileVnodeActionFormat "\n",
+                        "File vnode '%s' event by process '%s' (PID = %d) action" KextLog_FileVnodeActionFormat,
                         vnodePath,
                         processName,
                         pid,
